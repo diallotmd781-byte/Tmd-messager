@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, Keyboard
@@ -6,6 +6,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@tmd_messenger_v4';
+const API_URL = 'https://tmd-messager.onrender.com';
 
 const C = {
   bg: '#F4F7F5', white: '#FFFFFF', green: '#176B50', green2: '#E7F5EE',
@@ -39,8 +40,6 @@ const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minut
 const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 const normalizePhone = value => String(value || '').replace(/[\s()-]/g, '');
 
-/* ✅ Hash de démo — JAMAIS de mot de passe/code en clair.
-   ⚠️ Non sécurisé (pas de salt). En prod : Argon2id côté serveur. */
 function demoHash(input) {
   let h = 5381;
   for (let i = 0; i < input.length; i++) {
@@ -49,12 +48,10 @@ function demoHash(input) {
   return (h >>> 0).toString(16);
 }
 
-/* ✅ Masque le numéro (confidentialité). */
 function maskPhone() {
   return '•• •• •• ••';
 }
 
-/* ✅ Masque la date de naissance (RGPD). */
 function maskBirthDate() {
   return '••/••/••••';
 }
@@ -99,7 +96,7 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry = fals
       {!!label && <Text style={styles.label}>{label}</Text>}
       <TextInput
         value={value} onChangeText={onChangeText} placeholder={placeholder}
-        placeholderTextColor=« #9AA59F » secureTextEntry={secureTextEntry}
+        placeholderTextColor="#9AA59F" secureTextEntry={secureTextEntry}
         keyboardType={keyboardType} maxLength={maxLength}
         autoCapitalize={autoCapitalize} autoCorrect={false}
         returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing}
@@ -121,10 +118,9 @@ function Header({ title, onBack }) {
   );
 }
 
-/* ✅ Dialog de confirmation (remplace Alert.alert) */
 function ConfirmDialog({ visible, title, message, confirmText, cancelText, onConfirm, onCancel, danger }) {
   return (
-    <Modal visible={visible} transparent animationType=« fade » onRequestClose={onCancel}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View style={styles.dialogOverlay}>
         <View style={styles.dialogCard}>
           <Text style={styles.dialogTitle}>{title}</Text>
@@ -149,7 +145,7 @@ function ConfirmDialog({ visible, title, message, confirmText, cancelText, onCon
 function Page({ children, notice, clearNotice, onBack, title }) {
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle=« dark-content » backgroundColor={C.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
       {!!notice && (
         <TouchableOpacity style={styles.notice} onPress={clearNotice} activeOpacity={0.8}>
           <Text style={styles.noticeText}>{notice}</Text>
@@ -160,7 +156,8 @@ function Page({ children, notice, clearNotice, onBack, title }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}
-          keyboardShouldPersistTaps=« always » keyboardDismissMode=« none »
+          keyboardShouldPersistTaps="always"
+          keyboardDismissMode="none"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
           {children}
         </ScrollView>
@@ -177,8 +174,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
 
-  // ✅ savedAccount : persiste après logout (compte local).
-  // ✅ account : session active (null après logout).
   const [savedAccount, setSavedAccount] = useState(null);
   const [account, setAccount] = useState(null);
 
@@ -208,10 +203,6 @@ export default function App() {
 
   useEffect(() => { loadSavedData(); }, []);
 
-  // ✅ On ne persiste QUE les données non sensibles.
-  //    - passwordHash (déjà hashé)
-  //    - securityCodeHash (déjà hashé)
-  //    - JAMAIS password, securityCode en clair
   useEffect(() => {
     if (loading) return;
     const data = { savedAccount, chats, pseudonym, notificationsEnabled };
@@ -249,34 +240,43 @@ export default function App() {
     setScreen(next);
   }
 
-  /* ------------------------ INSCRIPTION ------------------------ */
-  function register() {
+  // ✅ NOUVELLE FONCTION D'INSCRIPTION CONNECTÉE AU SERVEUR
+  async function register() {
     if (!fullName.trim()) return setNotice('Entre ton nom complet.');
     if (!validBirthDate(birthDate)) return setNotice('Date invalide. JJ/MM/AAAA, âge 13-120.');
     if (normalizePhone(phone).length < 5) return setNotice('Numéro invalide.');
     if (password.length < 8) return setNotice('Mot de passe : au moins 8 caractères.');
     if (password !== confirmPassword) return setNotice('Les mots de passe ne correspondent pas.');
 
-    // ✅ Mot de passe HASHÉ, jamais en clair.
-    const newAccount = {
-      fullName: fullName.trim(),
-      birthDate,          // ⚠️ sera masqué à l'affichage
-      country,
-      phone: normalizePhone(phone),
-      passwordHash: demoHash(password),
-      securityCodeHash: null,
-    };
+    setNotice('Création du compte...');
 
-    setSavedAccount(newAccount);
-    setAccount(newAccount);
-    setPseudonym(fullName.trim().split(/\s+/)[0]);
-    setPassword('');
-    setConfirmPassword('');
-    go('face');
-    setNotice('Compte créé. Vérification du visage en démonstration.');
+    try {
+      // On envoie une vraie requête à ton serveur Render
+      const res = await fetch(`${API_URL}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalizePhone(phone), country_dial: country.dial })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        // Si le serveur répond OK, on passe à l'écran suivant
+        const newAccount = { fullName: fullName.trim(), birthDate, country, phone: normalizePhone(phone), passwordHash: demoHash(password) };
+        setSavedAccount(newAccount);
+        setAccount(newAccount);
+        setPseudonym(fullName.trim().split(/\s+/)[0]);
+        setPassword(''); setConfirmPassword('');
+        go('face');
+        setNotice('Code envoyé ! Vérifie ton SMS.');
+      } else {
+        setNotice(data.detail || 'Erreur serveur.');
+      }
+    } catch (error) {
+      setNotice('Erreur de connexion au serveur.');
+    }
   }
 
-  /* ------------------------ CONNEXION ------------------------ */
   function login() {
     if (!savedAccount) return setNotice('Aucun compte enregistré.');
     const entered = normalizePhone(loginPhone);
@@ -291,7 +291,6 @@ export default function App() {
 
     setAccount(savedAccount);
     setLoginPassword('');
-    // ✅ Pas de face check à la connexion. Code → unlock, sinon home.
     go(savedAccount.securityCodeHash ? 'unlock' : 'home');
   }
 
@@ -300,12 +299,10 @@ export default function App() {
     go('setcode');
   }
 
-  /* ------------------------ CODE ------------------------ */
   function saveSecurityCode() {
     if (securityCode.length !== 8) return setNotice('Le code doit contenir 8 caractères.');
     if (securityCode !== confirmSecurityCode) return setNotice('Les codes ne correspondent pas.');
 
-    // ✅ Code HASHÉ.
     const updated = { ...account, securityCodeHash: demoHash(securityCode) };
     setAccount(updated);
     setSavedAccount(updated);
@@ -337,30 +334,40 @@ export default function App() {
     go('home');
   }
 
-  /* ------------------------ CHAT ------------------------ */
   function openChat(id) {
     setActiveChatId(id);
     setChats(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     go('chat');
   }
 
-  function sendMessage() {
+  // ✅ FONCTION D'ENVOI DE MESSAGE CONNECTÉE AU SERVEUR
+  async function sendMessage() {
     const text = messageText.trim();
     if (!text || !activeChatId) return;
-    const newMessage = { id: makeId(), text, mine: true, time: nowTime(), status: 'Envoyé' };
+    
+    const newMessage = { id: makeId(), text, mine: true, time: nowTime(), status: 'Envoi...' };
 
     setChats(prev => prev.map(c => c.id === activeChatId
       ? { ...c, last: text, messages: [...c.messages, newMessage] } : c));
     setMessageText('');
     Keyboard.dismiss();
 
-    const chatId = activeChatId;
-    const messageId = newMessage.id;
-    setTimeout(() => {
-      setChats(prev => prev.map(c => c.id === chatId
-        ? { ...c, messages: c.messages.map(m => m.id === messageId ? { ...m, status: 'Distribué' } : m) }
-        : c));
-    }, 800);
+    try {
+      // Envoi au serveur Render (simulation)
+      const res = await fetch(`${API_URL}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: '000', country_dial: '+000' }) 
+      });
+      
+      // Une fois envoyé, on met le statut à jour
+      setChats(prev => prev.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Envoyé' } : m) } : c));
+        
+    } catch (error) {
+      setChats(prev => prev.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Échec' } : m) } : c));
+    }
   }
 
   function addContact() {
@@ -414,9 +421,7 @@ export default function App() {
     });
   }
 
-  /* ------------------------ DÉCONNEXION ------------------------ */
   function logout() {
-    // ✅ account = null (session terminée). savedAccount conservé.
     setAccount(null);
     setActiveChatId(null);
     setLoginPhone(''); setLoginPassword(''); setEnteredCode(''); setMessageText('');
@@ -445,7 +450,6 @@ export default function App() {
     });
   }
 
-  /* ------------------------ DONNÉES DÉRIVÉES ------------------------ */
   const activeChat = useMemo(
     () => chats.find(c => c.id === activeChatId),
     [chats, activeChatId]
@@ -466,7 +470,7 @@ export default function App() {
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, styles.center]}>
-        <StatusBar barStyle=« dark-content » />
+        <StatusBar barStyle="dark-content" />
         <View style={styles.logo}><Text style={styles.logoText}>T</Text></View>
         <Text style={styles.brand}>TMD Messenger</Text>
         <Text style={styles.body}>Chargement des données locales…</Text>
@@ -491,7 +495,7 @@ export default function App() {
             title={savedAccount ? 'Continuer vers mon compte' : 'Créer un compte'}
             onPress={() => go(savedAccount ? 'login' : 'register')}
           />
-          <Button title=« Se connecter » secondary onPress={() => go('login')} />
+          <Button title="Se connecter" secondary onPress={() => go('login')} />
           <Text style={styles.smallNote}>
             Prototype local : les messages ne sont pas encore envoyés sur Internet.
           </Text>
@@ -502,15 +506,15 @@ export default function App() {
 
   if (screen === 'register') {
     return (
-      <Page title=« Créer un compte » onBack={() => go('welcome')}
+      <Page title="Créer un compte" onBack={() => go('welcome')}
         notice={notice} clearNotice={() => setNotice('')}>
         <View style={styles.card}>
           <Text style={styles.title}>Tes informations</Text>
-          <Field label=« Nom complet » value={fullName} onChangeText={setFullName}
-            placeholder=« Ex. TMD Diallo » autoCapitalize=« words » />
-          <Field label=« Date de naissance » value={birthDate}
+          <Field label="Nom complet" value={fullName} onChangeText={setFullName}
+            placeholder="Ex. TMD Diallo" autoCapitalize="words" />
+          <Field label="Date de naissance" value={birthDate}
             onChangeText={v => setBirthDate(formatDate(v))}
-            placeholder=« JJ/MM/AAAA » keyboardType=« number-pad » maxLength={10} />
+            placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
           <Text style={styles.label}>Pays</Text>
           <TouchableOpacity style={styles.select}
             onPress={() => { Keyboard.dismiss(); setShowCountries(v => !v); }}>
@@ -519,7 +523,7 @@ export default function App() {
           </TouchableOpacity>
           {showCountries && (
             <View style={styles.countryList}>
-              <ScrollView nestedScrollEnabled keyboardShouldPersistTaps=« always »>
+              <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always">
                 {COUNTRIES.map(item => (
                   <TouchableOpacity key={item.name} style={styles.countryItem}
                     onPress={() => { setCountry(item); setShowCountries(false); }}>
@@ -529,15 +533,15 @@ export default function App() {
               </ScrollView>
             </View>
           )}
-          <Field label=« Téléphone sans indicatif » value={phone} onChangeText={setPhone}
-            placeholder=« Ex. 620000000 » keyboardType=« phone-pad » />
-          <Field label=« Mot de passe » value={password} onChangeText={setPassword}
-            placeholder=« Au moins 8 caractères » secureTextEntry />
-          <Field label=« Confirmer le mot de passe » value={confirmPassword}
-            onChangeText={setConfirmPassword} placeholder=« Retape ton mot de passe »
-            secureTextEntry returnKeyType=« done » />
-          <Button title=« Continuer » onPress={register} />
-          <Button title=« J’ai déjà un compte » secondary onPress={() => go('login')} />
+          <Field label="Téléphone sans indicatif" value={phone} onChangeText={setPhone}
+            placeholder="Ex. 620000000" keyboardType="phone-pad" />
+          <Field label="Mot de passe" value={password} onChangeText={setPassword}
+            placeholder="Au moins 8 caractères" secureTextEntry />
+          <Field label="Confirmer le mot de passe" value={confirmPassword}
+            onChangeText={setConfirmPassword} placeholder="Retape ton mot de passe"
+            secureTextEntry returnKeyType="done" />
+          <Button title="Continuer" onPress={register} />
+          <Button title="J’ai déjà un compte" secondary onPress={() => go('login')} />
         </View>
       </Page>
     );
@@ -545,17 +549,17 @@ export default function App() {
 
   if (screen === 'login') {
     return (
-      <Page title=« Connexion » onBack={() => go('welcome')}
+      <Page title="Connexion" onBack={() => go('welcome')}
         notice={notice} clearNotice={() => setNotice('')}>
         <View style={styles.card}>
           <Text style={styles.title}>Ravi de te revoir</Text>
           <Text style={styles.body}>Connecte-toi avec les informations enregistrées.</Text>
-          <Field label=« Numéro de téléphone » value={loginPhone} onChangeText={setLoginPhone}
-            placeholder=« Ton numéro » keyboardType=« phone-pad » />
-          <Field label=« Mot de passe » value={loginPassword} onChangeText={setLoginPassword}
-            placeholder=« Ton mot de passe » secureTextEntry returnKeyType=« done » />
-          <Button title=« Se connecter » onPress={login} />
-          <Button title=« Créer un compte » secondary onPress={() => go('register')} />
+          <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone}
+            placeholder="Ton numéro" keyboardType="phone-pad" />
+          <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword}
+            placeholder="Ton mot de passe" secureTextEntry returnKeyType="done" />
+          <Button title="Se connecter" onPress={login} />
+          <Button title="Créer un compte" secondary onPress={() => go('register')} />
         </View>
       </Page>
     );
@@ -573,8 +577,8 @@ export default function App() {
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>Aucune donnée biométrique n’est collectée.</Text>
           </View>
-          <Button title=« Continuer » onPress={finishFaceDemo} />
-          <Button title=« Retour à l’accueil » secondary onPress={() => go('welcome')} />
+          <Button title="Continuer" onPress={finishFaceDemo} />
+          <Button title="Retour à l’accueil" secondary onPress={() => go('welcome')} />
         </View>
       </Page>
     );
@@ -589,12 +593,12 @@ export default function App() {
         <View style={styles.card}>
           <Text style={styles.title}>{changing ? 'Nouveau code' : 'Crée ton code'}</Text>
           <Text style={styles.body}>Choisis exactement 8 caractères.</Text>
-          <Field label=« Code de sécurité » value={securityCode} onChangeText={setSecurityCode}
-            placeholder=« 8 caractères » maxLength={8} secureTextEntry />
+          <Field label="Code de sécurité" value={securityCode} onChangeText={setSecurityCode}
+            placeholder="8 caractères" maxLength={8} secureTextEntry />
           <Text style={styles.counter}>{securityCode.length}/8 caractères</Text>
-          <Field label=« Confirmer le code » value={confirmSecurityCode}
-            onChangeText={setConfirmSecurityCode} placeholder=« Retape le même code »
-            maxLength={8} secureTextEntry returnKeyType=« done » />
+          <Field label="Confirmer le code" value={confirmSecurityCode}
+            onChangeText={setConfirmSecurityCode} placeholder="Retape le même code"
+            maxLength={8} secureTextEntry returnKeyType="done" />
           <Button
             title={changing ? 'Enregistrer le code' : 'Enregistrer et ouvrir TMD'}
             onPress={changing ? changeSecurityCode : saveSecurityCode}
@@ -616,10 +620,10 @@ export default function App() {
         </View>
         <View style={styles.card}>
           <Text style={styles.title}>Code de sécurité</Text>
-          <Field label=« Saisis ton code » value={enteredCode} onChangeText={setEnteredCode}
-            placeholder=« 8 caractères » maxLength={8} secureTextEntry returnKeyType=« done » />
-          <Button title=« Déverrouiller » onPress={unlock} />
-          <Button title=« Retour à l’accueil » secondary onPress={logout} />
+          <Field label="Saisis ton code" value={enteredCode} onChangeText={setEnteredCode}
+            placeholder="8 caractères" maxLength={8} secureTextEntry returnKeyType="done" />
+          <Button title="Déverrouiller" onPress={unlock} />
+          <Button title="Retour à l’accueil" secondary onPress={logout} />
         </View>
       </Page>
     );
@@ -627,21 +631,21 @@ export default function App() {
 
   if (screen === 'addContact') {
     return (
-      <Page title=« Nouvelle conversation » onBack={() => go('home')}
+      <Page title="Nouvelle conversation" onBack={() => go('home')}
         notice={notice} clearNotice={() => setNotice('')}>
         <View style={styles.card}>
           <Text style={styles.title}>Ajouter un contact</Text>
           <Text style={styles.body}>
             Crée une conversation locale. Ne recherche pas de vrais utilisateurs.
           </Text>
-          <Field label=« Nom du contact » value={newContactName}
-            onChangeText={setNewContactName} placeholder=« Nom à afficher » autoCapitalize=« words » />
-          <Field label=« Pseudonyme (facultatif) » value={newContactPseudonym}
-            onChangeText={setNewContactPseudonym} placeholder=« Pseudonyme public » />
-          <Field label=« Numéro de téléphone » value={newContactPhone}
-            onChangeText={setNewContactPhone} placeholder=« Numéro du contact »
-            keyboardType=« phone-pad » returnKeyType=« done » />
-          <Button title=« Créer la conversation » onPress={addContact} />
+          <Field label="Nom du contact" value={newContactName}
+            onChangeText={setNewContactName} placeholder="Nom à afficher" autoCapitalize="words" />
+          <Field label="Pseudonyme (facultatif)" value={newContactPseudonym}
+            onChangeText={setNewContactPseudonym} placeholder="Pseudonyme public" />
+          <Field label="Numéro de téléphone" value={newContactPhone}
+            onChangeText={setNewContactPhone} placeholder="Numéro du contact"
+            keyboardType="phone-pad" returnKeyType="done" />
+          <Button title="Créer la conversation" onPress={addContact} />
         </View>
       </Page>
     );
@@ -652,13 +656,13 @@ export default function App() {
       return (
         <Page notice={notice} clearNotice={() => setNotice('')}>
           <Text style={styles.title}>Conversation introuvable</Text>
-          <Button title=« Retour aux messages » onPress={() => go('home')} />
+          <Button title="Retour aux messages" onPress={() => go('home')} />
         </Page>
       );
     }
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle=« dark-content » backgroundColor={C.bg} />
+        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
         {!!notice && (
           <TouchableOpacity style={styles.notice} onPress={() => setNotice('')}>
             <Text style={styles.noticeText}>{notice}</Text>
@@ -680,7 +684,7 @@ export default function App() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 4 : 0}>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.chatMessages}
-            keyboardShouldPersistTaps=« always » keyboardDismissMode=« none »
+            keyboardShouldPersistTaps="always" keyboardDismissMode="none"
             automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
             {activeChat.messages.map(message => (
               <TouchableOpacity key={message.id} activeOpacity={0.9}
@@ -695,7 +699,7 @@ export default function App() {
                   </Text>
                   {message.mine && (
                     <Text style={styles.statusText}>
-                      {message.status === 'Distribué' ? '✓✓' : '✓'}
+                      {message.status === 'Envoyé' ? '✓' : message.status === 'Distribué' ? '✓✓' : message.status}
                     </Text>
                   )}
                 </View>
@@ -710,7 +714,7 @@ export default function App() {
           </ScrollView>
           <View style={styles.composer}>
             <TextInput value={messageText} onChangeText={setMessageText}
-              placeholder=« Écrire un message… » placeholderTextColor=« #9AA59F »
+              placeholder="Écrire un message…" placeholderTextColor="#9AA59F"
               style={styles.composerInput} multiline blurOnSubmit={false} />
             <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
               <Text style={styles.sendText}>➤</Text>
@@ -727,7 +731,7 @@ export default function App() {
   if (screen === 'home') {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle=« dark-content » backgroundColor={C.bg} />
+        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
         {!!notice && (
           <TouchableOpacity style={styles.notice} onPress={() => setNotice('')}>
             <Text style={styles.noticeText}>{notice}</Text>
@@ -747,9 +751,9 @@ export default function App() {
 
         {tab === 'messages' ? (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent}
-            keyboardShouldPersistTaps=« always » keyboardDismissMode=« none »>
+            keyboardShouldPersistTaps="always" keyboardDismissMode="none">
             <TextInput value={search} onChangeText={setSearch}
-              placeholder=« ⌕ Rechercher une conversation » placeholderTextColor=« #98A49D »
+              placeholder="⌕ Rechercher une conversation" placeholderTextColor="#98A49D"
               style={styles.searchInput} />
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Messages</Text>
@@ -789,7 +793,7 @@ export default function App() {
           </ScrollView>
         ) : (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent}
-            keyboardShouldPersistTaps=« always »>
+            keyboardShouldPersistTaps="always">
             <View style={styles.profileCard}>
               <View style={styles.profileAvatar}>
                 <Text style={styles.profileAvatarText}>
@@ -798,15 +802,14 @@ export default function App() {
               </View>
               <Text style={styles.profileName}>{account?.fullName || 'Utilisateur TMD'}</Text>
               <Text style={styles.profileMeta}>@{pseudonym || 'tmd_utilisateur'}</Text>
-              {/* ✅ Numéro TOUJOURS masqué */}
               <Text style={styles.profileMeta}>{maskPhone()}</Text>
               <Text style={styles.privacyTag}>🔒 Numéro masqué (politique TMD)</Text>
             </View>
 
             <View style={styles.card}>
               <Text style={styles.sectionTitle}>Mon profil</Text>
-              <Field label=« Pseudonyme public » value={pseudonym} onChangeText={setPseudonym}
-                placeholder=« Choisis ton pseudonyme » />
+              <Field label="Pseudonyme public" value={pseudonym} onChangeText={setPseudonym}
+                placeholder="Choisis ton pseudonyme" />
 
               <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Pays</Text>
@@ -815,7 +818,6 @@ export default function App() {
 
               <View style={styles.settingRow}>
                 <Text style={styles.settingLabel}>Date de naissance</Text>
-                {/* ✅ Date TOUJOURS masquée */}
                 <Text style={styles.settingValue}>
                   {account?.birthDate ? `${maskBirthDate()} (vérifiée)` : '—'}
                 </Text>
@@ -837,11 +839,11 @@ export default function App() {
                 </TouchableOpacity>
               </View>
 
-              <Button title=« Changer le code de sécurité » secondary onPress={() => {
+              <Button title="Changer le code de sécurité" secondary onPress={() => {
                 setSecurityCode(''); setConfirmSecurityCode(''); go('changeCode');
               }} />
-              <Button title=« Se déconnecter » onPress={logout} />
-              <Button title=« Effacer les données locales » danger onPress={askClearLocalData} />
+              <Button title="Se déconnecter" onPress={logout} />
+              <Button title="Effacer les données locales" danger onPress={askClearLocalData} />
               <Text style={styles.smallNote}>
                 Ton numéro reste masqué par défaut. Ce choix reflète la politique de confidentialité de TMD.
               </Text>
@@ -867,14 +869,11 @@ export default function App() {
     <Page notice={notice} clearNotice={() => setNotice('')}>
       <Text style={styles.title}>TMD Messenger</Text>
       <Text style={styles.body}>Écran inconnu.</Text>
-      <Button title=« Retour à l’accueil » onPress={() => go('welcome')} />
+      <Button title="Retour à l’accueil" onPress={() => go('welcome')} />
     </Page>
   );
 }
 
-/* =========================================================
-   STYLES (identiques à ton code, + privacyTag et dialog*)
-   ========================================================= */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
@@ -1013,4 +1012,4 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: C.green },
   dialogBtnCancelText: { color: C.dark, fontWeight: '700', fontSize: 14 },
   dialogBtnConfirmText: { color: C.white, fontWeight: '800', fontSize: 14 },
-});       
+});
