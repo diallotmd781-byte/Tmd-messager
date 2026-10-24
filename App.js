@@ -67,6 +67,9 @@ function validBirthDate(value) {
   return age >= 13 && age <= 120;
 }
 
+/* =========================================================
+   COMPOSANTS
+   ========================================================= */
 function Button({ title, onPress, secondary = false, danger = false }) {
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress}
@@ -142,6 +145,9 @@ function Page({ children, notice, clearNotice, onBack, title }) {
   );
 }
 
+/* =========================================================
+   APP
+   ========================================================= */
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [loading, setLoading] = useState(true);
@@ -152,7 +158,7 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [tab, setTab] = useState('messages');
   
-  // État du formulaire d'inscription
+  // Formulaire d'inscription
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [country, setCountry] = useState(COUNTRIES[0]);
@@ -160,8 +166,6 @@ export default function App() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
-  // NOUVEAU : État pour le code OTP
   const [otpCode, setOtpCode] = useState('');
 
   const [loginPhone, setLoginPhone] = useState('');
@@ -211,7 +215,7 @@ export default function App() {
     setScreen(next);
   }
 
-  // 1. On demande le code
+  /* ------------------------ INSCRIPTION ------------------------ */
   async function register() {
     if (!fullName.trim()) return setNotice('Entre ton nom complet.');
     if (!validBirthDate(birthDate)) return setNotice('Date invalide. JJ/MM/AAAA, âge 13-120.');
@@ -219,7 +223,7 @@ export default function App() {
     if (password.length < 8) return setNotice('Mot de passe : au moins 8 caractères.');
     if (password !== confirmPassword) return setNotice('Les mots de passe ne correspondent pas.');
 
-    setNotice('Création du compte en cours...');
+    setNotice('Envoi du code SMS...');
 
     try {
       const res = await fetch(`${API_URL}/auth/send-otp`, {
@@ -231,17 +235,16 @@ export default function App() {
       const data = await res.json();
       
       if (res.ok) {
-        go('verifyOtp'); // On va sur le nouvel écran
-        setNotice('Code envoyé ! Vérifie ton SMS.');
+        go('verifyOtp');
+        setNotice('Code envoyé !');
       } else {
         setNotice(data.detail || 'Erreur serveur.');
       }
     } catch (error) {
-      setNotice('Erreur de connexion au serveur.');
+      setNotice('Erreur de connexion.');
     }
   }
 
-  // 2. On vérifie le code
   async function verifyOtp() {
     if (!otpCode || otpCode.length !== 6) return setNotice('Entre le code à 6 chiffres.');
     
@@ -257,22 +260,22 @@ export default function App() {
       const data = await res.json();
       
       if (res.ok) {
-        // C'est ici que l'on "crée" le compte localement pour la démo
         const newAccount = { fullName: fullName.trim(), birthDate, country, phone: normalizePhone(phone), passwordHash: demoHash(password) };
         setSavedAccount(newAccount);
         setAccount(newAccount);
         setPseudonym(fullName.trim().split(/\s+/)[0]);
         setPassword(''); setConfirmPassword(''); setOtpCode('');
         go('face');
-        setNotice('Numéro vérifié ! Scan du visage.');
+        setNotice('Numéro vérifié !');
       } else {
         setNotice(data.detail || 'Code incorrect.');
       }
     } catch (error) {
-      setNotice('Erreur de connexion au serveur.');
+      setNotice('Erreur de connexion.');
     }
   }
 
+  /* ------------------------ CONNEXION ------------------------ */
   function login() {
     if (!savedAccount) return setNotice('Aucun compte enregistré.');
     const entered = normalizePhone(loginPhone);
@@ -293,6 +296,7 @@ export default function App() {
     go('setcode');
   }
 
+  /* ------------------------ CODE ------------------------ */
   function saveSecurityCode() {
     if (securityCode.length !== 8) return setNotice('Le code doit contenir 8 caractères.');
     if (securityCode !== confirmSecurityCode) return setNotice('Les codes ne correspondent pas.');
@@ -321,18 +325,21 @@ export default function App() {
     go('home');
   }
 
+  /* ------------------------ CHAT ------------------------ */
   function openChat(id) {
     setActiveChatId(id);
     setChats(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     go('chat');
   }
 
+  // ✅ NOUVELLE FONCTION D'ENVOI AVEC DOUBLE COCHE
   async function sendMessage() {
     const text = messageText.trim();
     if (!text || !activeChatId) return;
     const newMessage = { id: makeId(), text, mine: true, time: nowTime(), status: 'Envoi...' };
 
-    setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, last: text, messages: [...c.messages, newMessage] } : c));
+    setChats(prev => prev.map(c => c.id === activeChatId
+      ? { ...c, last: text, messages: [...c.messages, newMessage] } : c));
     setMessageText('');
     Keyboard.dismiss();
 
@@ -341,9 +348,13 @@ export default function App() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: '000', country_dial: '+000' }) 
       });
-      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Envoyé' } : m) } : c));
+      
+      setChats(prev => prev.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Distribué' } : m) } : c));
+        
     } catch (error) {
-      setChats(prev => prev.map(c => c.id === activeChatId ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Échec' } : m) } : c));
+      setChats(prev => prev.map(c => c.id === activeChatId
+        ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Échec' } : m) } : c));
     }
   }
 
@@ -384,6 +395,7 @@ export default function App() {
     });
   }
 
+  /* ------------------------ DÉCONNEXION ------------------------ */
   function logout() {
     setAccount(null); setActiveChatId(null); setLoginPhone(''); setLoginPassword(''); setEnteredCode(''); setMessageText('');
     go('welcome'); setNotice('Tu es déconnecté.');
@@ -405,6 +417,7 @@ export default function App() {
     });
   }
 
+  /* ------------------------ DONNÉES DÉRIVÉES ------------------------ */
   const activeChat = useMemo(() => chats.find(c => c.id === activeChatId), [chats, activeChatId]);
   const filteredChats = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -412,6 +425,9 @@ export default function App() {
     return chats.filter(c => c.name.toLowerCase().includes(q) || (c.pseudonym || '').toLowerCase().includes(q) || (c.last || '').toLowerCase().includes(q));
   }, [chats, search]);
 
+  /* =========================================================
+     ÉCRANS
+     ========================================================= */
   if (loading) {
     return (
       <SafeAreaView style={[styles.safe, styles.center]}>
@@ -475,7 +491,6 @@ export default function App() {
     );
   }
 
-  // NOUVEL ÉCRAN ICI
   if (screen === 'verifyOtp') {
     return (
       <Page title="Vérification SMS" onBack={() => go('register')} notice={notice} clearNotice={() => setNotice('')}>
@@ -740,6 +755,9 @@ export default function App() {
   );
 }
 
+/* =========================================================
+   STYLES
+   ========================================================= */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
