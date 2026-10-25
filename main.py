@@ -1,14 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.orm import Session
-from fastapi import Depends
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
 import os
 import random
 
 # --- CONFIGURATION DE LA BASE DE DONNÉES ---
-# Render va injecter cette variable d'environnement (on la configurera à l'étape 3)
+# Render va injecter cette variable d'environnement (DATABASE_URL)
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
 
 # Création du moteur de base de données
