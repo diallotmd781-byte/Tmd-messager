@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base, Session, relationship
@@ -46,6 +47,15 @@ def get_db():
         db.close()
 
 app = FastAPI()
+
+# ✅ AJOUT DU CORS POUR AUTORISER TOUS LES APPAREILS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 otp_storage = {}
 
