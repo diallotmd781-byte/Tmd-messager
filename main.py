@@ -1,15 +1,45 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import random
+from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import Session
+from fastapi import Depends
 import os
-from weezy import Weezy, WeezyError
+import random
 
+# --- CONFIGURATION DE LA BASE DE DONNÉES ---
+# Render va injecter cette variable d'environnement (on la configurera à l'étape 3)
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
+
+# Création du moteur de base de données
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# --- MODÈLE DE DONNÉES (Table Utilisateur) ---
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    phone = Column(String, unique=True, index=True)
+    country_dial = Column(String)
+    is_verified = Column(Integer, default=0)
+
+# Créer la table si elle n'existe pas
+Base.metadata.create_all(bind=engine)
+
+# --- FONCTION POUR OBTENIR LA SESSION DB ---
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# --- INITIALISATION FASTAPI ---
 app = FastAPI()
 
-# --- Tes identifiants Weezy (on les mettra sur le serveur plus tard) ---
-# Pour tester sur ton téléphone, laisse vide pour l'instant.
-WEEZY_CLIENT_ID = os.environ.get("WEEZY_CLIENT_ID", "")
-WEEZY_CLIENT_SECRET = os.environ.get("WEEZY_CLIENT_SECRET", "")
+# Mémoire temporaire pour les codes OTP (en attendant de les mettre en base)
+otp_storage = {}
 
 class PhoneRequest(BaseModel):
     phone: str
@@ -20,44 +50,44 @@ class VerifyRequest(BaseModel):
     country_dial: str
     code: str
 
-otp_storage = {} 
-
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Bienvenue sur l'API TMD Messenger"}
 
 @app.post("/auth/send-otp")
-def send_otp(req: PhoneRequest):
+def send_otp(req: PhoneRequest, db: Session = Depends(get_db)):
+    # 1. Vérifier si l'utilisateur existe déjà dans la base
+    user = db.query(User).filter(User.phone == req.phone).first()
+    if user and user.is_verified == 1:
+        raise HTTPException(status_code=400, detail="Ce numéro est déjà inscrit.")
+    
     phone_full = f"{req.country_dial}{req.phone}"
     code = str(random.randint(100000, 999999))
     otp_storage[phone_full] = code
     
-    # --- ENVOI DU SMS AVEC WEEZY ---
-    if WEEZY_CLIENT_ID and WEEZY_CLIENT_SECRET:
-        try:
-            with Weezy(client_id=WEEZY_CLIENT_ID, client_secret=WEEZY_CLIENT_SECRET) as client:
-                client.sms.send(body={
-                    'to': phone_full,
-                    'body': f"Ton code TMD Messenger : {code}",
-                    'sender_name': 'WEEZY',
-                    'sandbox': True # ⚠️ MODE TEST : le code sera toujours 123456
-                })
-                print(f"[WEEZY] SMS envoyé à {phone_full}")
-        except Exception as e:
-            print(f"Erreur Weezy : {e}")
-    else:
-        print(f"[SMS SIMULÉ] Code OTP pour {phone_full} : {code}")
+    print(f"[SMS SIMULÉ] Code OTP pour {phone_full} : {code}")
     
     return {"status": "sent", "message": "Code envoyé"}
 
 @app.post("/auth/verify-otp")
-def verify_otp(req: VerifyRequest):
+def verify_otp(req: VerifyRequest, db: Session = Depends(get_db)):
     phone_full = f"{req.country_dial}{req.phone}"
     saved_code = otp_storage.get(phone_full)
     
     if req.code == "123456" or req.code == saved_code:
+        # On enregistre l'utilisateur dans la base de données !
+        user = db.query(User).filter(User.phone == req.phone).first()
+        if not user:
+            new_user = User(phone=req.phone, country_dial=req.country_dial, is_verified=1)
+            db.add(new_user)
+            db.commit()
+        else:
+            user.is_verified = 1
+            db.commit()
+
         if phone_full in otp_storage:
             del otp_storage[phone_full]
-        return {"status": "verified", "message": "Numéro vérifié !"}
+            
+        return {"status": "verified", "message": "Numéro vérifié et enregistré !"}
     else:
         raise HTTPException(status_code=400, detail="Code incorrect")
