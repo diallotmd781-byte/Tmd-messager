@@ -245,6 +245,7 @@ export default function App() {
     }
   }
 
+  // ✅ NOUVELLE FONCTION : Envoie les vraies infos au serveur
   async function verifyOtp() {
     if (!otpCode || otpCode.length !== 6) return setNotice('Entre le code à 6 chiffres.');
     
@@ -254,7 +255,14 @@ export default function App() {
       const res = await fetch(`${API_URL}/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: normalizePhone(phone), country_dial: country.dial, code: otpCode })
+        body: JSON.stringify({ 
+          phone: normalizePhone(phone), 
+          country_dial: country.dial, 
+          code: otpCode,
+          name: fullName.trim(),
+          birth_date: birthDate,
+          password: demoHash(password) 
+        })
       });
       
       const data = await res.json();
@@ -332,10 +340,11 @@ export default function App() {
     go('chat');
   }
 
-  // ✅ NOUVELLE FONCTION D'ENVOI AVEC DOUBLE COCHE
+  // ✅ NOUVELLE FONCTION : Envoie le message au serveur Render
   async function sendMessage() {
     const text = messageText.trim();
-    if (!text || !activeChatId) return;
+    if (!text || !activeChat) return;
+    
     const newMessage = { id: makeId(), text, mine: true, time: nowTime(), status: 'Envoi...' };
 
     setChats(prev => prev.map(c => c.id === activeChatId
@@ -344,14 +353,23 @@ export default function App() {
     Keyboard.dismiss();
 
     try {
-      await fetch(`${API_URL}/auth/send-otp`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: '000', country_dial: '+000' }) 
+      const res = await fetch(`${API_URL}/messages/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender_phone: normalizePhone(account.phone),
+          recipient_phone: normalizePhone(activeChat.phone),
+          text: text
+        })
       });
       
-      setChats(prev => prev.map(c => c.id === activeChatId
-        ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Distribué' } : m) } : c));
-        
+      if (res.ok) {
+        setChats(prev => prev.map(c => c.id === activeChatId
+          ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Distribué' } : m) } : c));
+      } else {
+        setChats(prev => prev.map(c => c.id === activeChatId
+          ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Échec' } : m) } : c));
+      }
     } catch (error) {
       setChats(prev => prev.map(c => c.id === activeChatId
         ? { ...c, messages: c.messages.map(m => m.id === newMessage.id ? { ...m, status: 'Échec' } : m) } : c));
