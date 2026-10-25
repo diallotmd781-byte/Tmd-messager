@@ -755,9 +755,6 @@ export default function App() {
   );
 }
 
-/* =========================================================
-   STYLES
-   ========================================================= */
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24 },
