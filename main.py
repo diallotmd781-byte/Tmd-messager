@@ -37,7 +37,7 @@ class Message(Base):
     
     sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
 
-# ✅ NOUVELLE TABLE POUR LES POSTS
+# ✅ TABLE POUR LES POSTS (RÉSEAU SOCIAL)
 class Post(Base):
     __tablename__ = "posts"
     id = Column(Integer, primary_key=True, index=True)
@@ -58,6 +58,7 @@ def get_db():
 
 app = FastAPI()
 
+# ✅ CORS CONFIGURÉ POUR TOUS LES APPAREILS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -90,7 +91,7 @@ class GetMessagesRequest(BaseModel):
     user_phone: str
     contact_phone: str
 
-# ✅ NOUVEAUX MODÈLES POUR LE FEED
+# ✅ MODÈLES POUR LE FEED
 class CreatePostRequest(BaseModel):
     author_phone: str
     text: str
@@ -182,7 +183,7 @@ def get_messages_endpoint(req: GetMessagesRequest, db: Session = Depends(get_db)
     
     return [{"id": m.id, "text": m.text, "sender_id": m.sender_id, "created_at": m.created_at} for m in messages]
 
-# ✅ NOUVELLES ROUTES POUR LE FEED SOCIAL
+# ✅ ROUTES POUR LE FEED SOCIAL
 @app.post("/posts/create")
 def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
     author = db.query(User).filter(User.phone == req.author_phone).first()
@@ -196,7 +197,7 @@ def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
 
 @app.post("/posts/feed")
 def get_feed(req: GetFeedRequest, db: Session = Depends(get_db)):
-    # Pour le moment, tout le monde voit les posts de tout le monde
+    # Tout le monde voit les posts de tout le monde (feed public)
     posts = db.query(Post).order_by(Post.created_at.desc()).limit(50).all()
     
     result = []
