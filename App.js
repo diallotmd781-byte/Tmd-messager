@@ -153,7 +153,7 @@ export default function App() {
   const [account, setAccount] = useState(null);
   const [chats, setChats] = useState(starterChats);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [tab, setTab] = useState('messages'); // 'messages' | 'social' | 'profile'
+  const [tab, setTab] = useState('messages');
   
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -178,7 +178,7 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
-  // ✅ NOUVEAUX ÉTATS POUR LE FEED SOCIAL
+  // ÉTATS POUR LE FEED SOCIAL
   const [feedPosts, setFeedPosts] = useState([]);
   const [newPostText, setNewPostText] = useState('');
   const [feedLoading, setFeedLoading] = useState(false);
@@ -189,7 +189,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // ✅ CHARGER LE FEED QUAND ON ARRIVE SUR L'ONGLET
+  // CHARGER LE FEED QUAND ON ARRIVE SUR L'ONGLET
   useEffect(() => {
     if (tab === 'social' && account) {
       loadFeed();
@@ -230,7 +230,7 @@ export default function App() {
       if (res.ok) {
         setNewPostText('');
         setNotice('Publication ajoutée !');
-        loadFeed(); // Recharger le feed
+        loadFeed();
       } else {
         setNotice('Erreur lors de la publication.');
       }
@@ -720,7 +720,6 @@ export default function App() {
           </ScrollView>
         )}
 
-        {/* ✅ NOUVEL ONGLET : COMMUNAUTÉ / FEED SOCIAL */}
         {tab === 'social' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent} keyboardShouldPersistTaps="always">
             <View style={styles.card}>
@@ -860,12 +859,12 @@ const styles = StyleSheet.create({
   counter: { textAlign: 'right', color: C.muted, fontSize: 12, marginTop: -8, marginBottom: 12 },
   faceHero: { flex: 1, justifyContent: 'center', paddingHorizontal: 6, paddingTop: 26, paddingBottom: 22 },
   faceIcon: { width: 104, height: 104, borderRadius: 52, borderWidth: 6, borderColor: '#368460', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 28 },
-  infoBox: { backgroundColor: '#E8F5EE', padding: 20, borderRadius: 22, width marginBottom: 18 },
-  infoText:: { color: '#28684F', fontSize: 16,  lineHeight: 25, fontWeight: '700'48 },
-  homeHeader: { paddingHorizontal:, 22, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  infoBox: { backgroundColor: '#E8F5EE', padding: 20, borderRadius: 22, marginBottom: 18 },
+  infoText: { color: '#28684F', fontSize: 16, lineHeight: 25, fontWeight: '700' },
+  homeHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   greeting: { color: C.muted, fontSize: 15 },
   homeName: { color: C.dark, fontSize: 26, fontWeight: '900', marginTop: 3 },
-  avatar: { height: 48, borderRadius: 17, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 48, height: 48, borderRadius: 17, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: C.green, fontSize: 22, fontWeight: '900' },
   homeContent: { paddingHorizontal: 18, paddingBottom: 24 },
   searchInput: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 20, color: C.dark, fontSize: 15 },
@@ -914,7 +913,7 @@ const styles = StyleSheet.create({
   emptyBox: { backgroundColor: C.white, borderRadius: 18, padding: 22, marginTop: 12, alignItems: 'center' },
   emptyTitle: { color: C.dark, fontSize: 17, fontWeight: '800', marginBottom: 5 },
   deleteIcon: { color: C.red, fontSize: 25, paddingHorizontal: 8 },
-  dialog 'Overlay: { flex: 1center, backgroundColor: 'rgba(0,0,',0,0.45)', alignItems: 'center padding', justifyContent:: 24 },
+  dialogOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   dialogCard: { width: '100%', backgroundColor: C.white, borderRadius: 20, padding: 22 },
   dialogTitle: { fontSize: 19, fontWeight: '900', color: C.dark, marginBottom: 10 },
   dialogMessage: { fontSize: 14, lineHeight: 21, color: C.muted, marginBottom: 20 },
@@ -924,7 +923,6 @@ const styles = StyleSheet.create({
   dialogBtnCancelText: { color: C.dark, fontWeight: '700', fontSize: 14 },
   dialogBtnConfirmText: { color: C.white, fontWeight: '800', fontSize: 14 },
   
-  // ✅ STYLES POUR LE FEED SOCIAL
   postCard: { backgroundColor: C.white, borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#EAF0EC' },
   postAuthor: { color: C.green, fontSize: 15, fontWeight: '800', marginBottom: 8 },
   postText: { color: C.dark, fontSize: 15, lineHeight: 22 },
