@@ -153,7 +153,7 @@ export default function App() {
   const [account, setAccount] = useState(null);
   const [chats, setChats] = useState(starterChats);
   const [activeChatId, setActiveChatId] = useState(null);
-  const [tab, setTab] = useState('messages');
+  const [tab, setTab] = useState('messages'); // 'messages' | 'social' | 'profile'
   
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
@@ -178,11 +178,66 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
+  // ✅ NOUVEAUX ÉTATS POUR LE FEED SOCIAL
+  const [feedPosts, setFeedPosts] = useState([]);
+  const [newPostText, setNewPostText] = useState('');
+  const [feedLoading, setFeedLoading] = useState(false);
+
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 3500);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  // ✅ CHARGER LE FEED QUAND ON ARRIVE SUR L'ONGLET
+  useEffect(() => {
+    if (tab === 'social' && account) {
+      loadFeed();
+    }
+  }, [tab, account]);
+
+  async function loadFeed() {
+    if (!account) return;
+    setFeedLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/posts/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_phone: normalizePhone(account.phone) })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setFeedPosts(data);
+      }
+    } catch (error) {
+      console.log('Erreur feed:', error);
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  async function publishPost() {
+    const text = newPostText.trim();
+    if (!text) return;
+    
+    try {
+      const res = await fetch(`${API_URL}/posts/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ author_phone: normalizePhone(account.phone), text })
+      });
+      
+      if (res.ok) {
+        setNewPostText('');
+        setNotice('Publication ajoutée !');
+        loadFeed(); // Recharger le feed
+      } else {
+        setNotice('Erreur lors de la publication.');
+      }
+    } catch (error) {
+      setNotice('Erreur de connexion.');
+    }
+  }
 
   function go(next) {
     Keyboard.dismiss();
@@ -639,7 +694,7 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        {tab === 'messages' ? (
+        {tab === 'messages' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent} keyboardShouldPersistTaps="always" keyboardDismissMode="none">
             <TextInput value={search} onChangeText={setSearch} placeholder="⌕ Rechercher une conversation" placeholderTextColor="#98A49D" style={styles.searchInput} />
             <View style={styles.sectionHeader}>
@@ -662,12 +717,52 @@ export default function App() {
                 <Text style={styles.bodyCenter}>Essaie un autre nom ou crée une conversation.</Text>
               </View>
             )}
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeCardTitle}>État du prototype</Text>
-              <Text style={styles.body}>Les comptes et messages sont stockés localement. La messagerie entre appareils, les appels et le chiffrement E2E nécessitent une infrastructure réelle.</Text>
-            </View>
           </ScrollView>
-        ) : (
+        )}
+
+        {/* ✅ NOUVEL ONGLET : COMMUNAUTÉ / FEED SOCIAL */}
+        {tab === 'social' && (
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent} keyboardShouldPersistTaps="always">
+            <View style={styles.card}>
+              <Text style={styles.sectionTitle}>Nouvelle publication</Text>
+              <TextInput 
+                value={newPostText} 
+                onChangeText={setNewPostText} 
+                placeholder="Quoi de neuf ?" 
+                placeholderTextColor="#9AA49D"
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]} 
+                multiline 
+              />
+              <Button title="Publier" onPress={publishPost} />
+            </View>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Communauté TMD</Text>
+              <TouchableOpacity onPress={loadFeed}>
+                <Text style={{ color: C.green, fontWeight: '800' }}>Actualiser</Text>
+              </TouchableOpacity>
+            </View>
+
+            {feedLoading && <Text style={styles.mutedText}>Chargement...</Text>}
+
+            {feedPosts.length === 0 && !feedLoading && (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyTitle}>Aucune publication</Text>
+                <Text style={styles.bodyCenter}>Sois le premier à publier quelque chose !</Text>
+              </View>
+            )}
+
+            {feedPosts.map(post => (
+              <View key={post.id} style={styles.postCard}>
+                <Text style={styles.postAuthor}>{post.author_name}</Text>
+                <Text style={styles.postText}>{post.text}</Text>
+                <Text style={styles.postTime}>{post.created_at}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+
+        {tab === 'profile' && (
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.homeContent} keyboardShouldPersistTaps="always">
             <View style={styles.profileCard}>
               <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{(account?.fullName || 'T').slice(0, 1).toUpperCase()}</Text></View>
@@ -704,6 +799,10 @@ export default function App() {
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('messages')}>
             <Text style={[styles.tabIcon, tab === 'messages' && styles.activeTab]}>▤</Text>
             <Text style={[styles.tabLabel, tab === 'messages' && styles.activeTab]}>Messages</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.tabItem} onPress={() => setTab('social')}>
+            <Text style={[styles.tabIcon, tab === 'social' && styles.activeTab]}>◈</Text>
+            <Text style={[styles.tabLabel, tab === 'social' && styles.activeTab]}>Communauté</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.tabItem} onPress={() => setTab('profile')}>
             <Text style={[styles.tabIcon, tab === 'profile' && styles.activeTab]}>◉</Text>
@@ -761,17 +860,17 @@ const styles = StyleSheet.create({
   counter: { textAlign: 'right', color: C.muted, fontSize: 12, marginTop: -8, marginBottom: 12 },
   faceHero: { flex: 1, justifyContent: 'center', paddingHorizontal: 6, paddingTop: 26, paddingBottom: 22 },
   faceIcon: { width: 104, height: 104, borderRadius: 52, borderWidth: 6, borderColor: '#368460', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 28 },
-  infoBox: { backgroundColor: '#E8F5EE', padding: 20, borderRadius: 22, marginBottom: 18 },
-  infoText: { color: '#28684F', fontSize: 16, lineHeight: 25, fontWeight: '700' },
-  homeHeader: { paddingHorizontal: 22, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  infoBox: { backgroundColor: '#E8F5EE', padding: 20, borderRadius: 22, width marginBottom: 18 },
+  infoText:: { color: '#28684F', fontSize: 16,  lineHeight: 25, fontWeight: '700'48 },
+  homeHeader: { paddingHorizontal:, 22, paddingTop: 18, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   greeting: { color: C.muted, fontSize: 15 },
   homeName: { color: C.dark, fontSize: 26, fontWeight: '900', marginTop: 3 },
-  avatar: { width: 48, height: 48, borderRadius: 17, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
+  avatar: { height: 48, borderRadius: 17, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: C.green, fontSize: 22, fontWeight: '900' },
   homeContent: { paddingHorizontal: 18, paddingBottom: 24 },
-  searchInput: { backgroundColor: C.white, borderWidth: ',1, borderColor: C.border, borderRadius: 15 margin, padding: 14,Bottom marginBottom: 20, color: C:.dark, fontSize: 15 },
-   sectionHeader: { flexDirection:10 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { color: C.dark, fontSize: 21, fontWeight: '800 },
+  searchInput: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 20, color: C.dark, fontSize: 15 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle: { color: C.dark, fontSize: 21, fontWeight: '800', marginBottom: 10 },
   addButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: C.white, fontSize: 28, lineHeight: 32 },
   chatRow: { backgroundColor: C.white, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#EAF0EC' },
@@ -783,9 +882,8 @@ const styles = StyleSheet.create({
   noticeCard: { backgroundColor: '#EAF2FF', padding: 18, borderRadius: 18, marginTop: 16 },
   noticeCardTitle: { color: C.dark, fontWeight: '800', fontSize: 16, marginBottom: 8 },
   tabBar: { flexDirection: 'row', backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, paddingBottom: 8 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: },
- 'center' },
-  tabIcon: {  fontSize: 22, color: C status.muted },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tabIcon: { fontSize: 22, color: C.muted },
   tabLabel: { fontSize: 12, color: C.muted, marginTop: 3, fontWeight: '700' },
   activeTab: { color: C.green },
   profileCard: { backgroundColor: C.white, borderRadius: 22, alignItems: 'center', padding: 24, marginBottom: 16 },
@@ -806,7 +904,8 @@ const styles = StyleSheet.create({
   theirBubble: { backgroundColor: C.white, alignSelf: 'flex-start', borderBottomLeftRadius: 5, borderWidth: 1, borderColor: C.border },
   bubbleText: { color: C.dark, fontSize: 15, lineHeight: 21 },
   messageFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 5 },
-  time: { color: C.muted, fontSize: 10Text: { color: '#D9F4E7', fontSize: 11, marginLeft: 5, fontWeight: '900' },
+  time: { color: C.muted, fontSize: 10 },
+  statusText: { color: '#D9F4E7', fontSize: 11, marginLeft: 5, fontWeight: '900' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.white },
   composerInput: { flex: 1, minHeight: 46, maxHeight: 120, backgroundColor: C.bg, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, color: C.dark, fontSize: 15 },
   sendButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
@@ -815,7 +914,7 @@ const styles = StyleSheet.create({
   emptyBox: { backgroundColor: C.white, borderRadius: 18, padding: 22, marginTop: 12, alignItems: 'center' },
   emptyTitle: { color: C.dark, fontSize: 17, fontWeight: '800', marginBottom: 5 },
   deleteIcon: { color: C.red, fontSize: 25, paddingHorizontal: 8 },
-  dialogOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  dialog 'Overlay: { flex: 1center, backgroundColor: 'rgba(0,0,',0,0.45)', alignItems: 'center padding', justifyContent:: 24 },
   dialogCard: { width: '100%', backgroundColor: C.white, borderRadius: 20, padding: 22 },
   dialogTitle: { fontSize: 19, fontWeight: '900', color: C.dark, marginBottom: 10 },
   dialogMessage: { fontSize: 14, lineHeight: 21, color: C.muted, marginBottom: 20 },
@@ -824,4 +923,10 @@ const styles = StyleSheet.create({
   dialogBtnConfirm: { flex: 1, minHeight: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.green },
   dialogBtnCancelText: { color: C.dark, fontWeight: '700', fontSize: 14 },
   dialogBtnConfirmText: { color: C.white, fontWeight: '800', fontSize: 14 },
+  
+  // ✅ STYLES POUR LE FEED SOCIAL
+  postCard: { backgroundColor: C.white, borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#EAF0EC' },
+  postAuthor: { color: C.green, fontSize: 15, fontWeight: '800', marginBottom: 8 },
+  postText: { color: C.dark, fontSize: 15, lineHeight: 22 },
+  postTime: { color: C.muted, fontSize: 11, marginTop: 8, textAlign: 'right' },
 });
