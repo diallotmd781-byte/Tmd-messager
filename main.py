@@ -48,11 +48,11 @@ def get_db():
 
 app = FastAPI()
 
-# ✅ AJOUT DU CORS POUR AUTORISER TOUS LES APPAREILS
+# ✅ CORRECTION POUR ANDROID : allow_credentials=False
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
