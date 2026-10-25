@@ -37,6 +37,16 @@ class Message(Base):
     
     sender = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
 
+# ✅ NOUVELLE TABLE POUR LES POSTS
+class Post(Base):
+    __tablename__ = "posts"
+    id = Column(Integer, primary_key=True, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"))
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    author = relationship("User", foreign_keys=[author_id])
+
 Base.metadata.create_all(bind=engine)
 
 def get_db():
@@ -48,7 +58,6 @@ def get_db():
 
 app = FastAPI()
 
-# ✅ CORRECTION POUR ANDROID : allow_credentials=False
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -80,6 +89,14 @@ class SendMessageRequest(BaseModel):
 class GetMessagesRequest(BaseModel):
     user_phone: str
     contact_phone: str
+
+# ✅ NOUVEAUX MODÈLES POUR LE FEED
+class CreatePostRequest(BaseModel):
+    author_phone: str
+    text: str
+
+class GetFeedRequest(BaseModel):
+    user_phone: str
 
 @app.get("/")
 def read_root():
@@ -164,3 +181,31 @@ def get_messages_endpoint(req: GetMessagesRequest, db: Session = Depends(get_db)
     ).order_by(Message.created_at.asc()).all()
     
     return [{"id": m.id, "text": m.text, "sender_id": m.sender_id, "created_at": m.created_at} for m in messages]
+
+# ✅ NOUVELLES ROUTES POUR LE FEED SOCIAL
+@app.post("/posts/create")
+def create_post(req: CreatePostRequest, db: Session = Depends(get_db)):
+    author = db.query(User).filter(User.phone == req.author_phone).first()
+    if not author:
+        raise HTTPException(status_code=404, detail="Auteur introuvable")
+    
+    new_post = Post(author_id=author.id, text=req.text)
+    db.add(new_post)
+    db.commit()
+    return {"status": "created"}
+
+@app.post("/posts/feed")
+def get_feed(req: GetFeedRequest, db: Session = Depends(get_db)):
+    # Pour le moment, tout le monde voit les posts de tout le monde
+    posts = db.query(Post).order_by(Post.created_at.desc()).limit(50).all()
+    
+    result = []
+    for p in posts:
+        author = db.query(User).filter(User.id == p.author_id).first()
+        result.append({
+            "id": p.id,
+            "text": p.text,
+            "author_name": author.name if author else "Inconnu",
+            "created_at": p.created_at.strftime("%H:%M")
+        })
+    return result
