@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Keyboard
+  StyleSheet, StatusBar, KeyboardAvoidingView, Platform
 } from 'react-native';
 
 const API_URL = 'https://tmd-messager.onrender.com';
@@ -9,26 +9,16 @@ const API_URL = 'https://tmd-messager.onrender.com';
 const C = {
   bg: '#F4F7F5', white: '#FFFFFF', green: '#176B50', green2: '#E7F5EE',
   dark: '#17251F', muted: '#75827B', border: '#DDE5E0', red: '#B42318',
-  yellow: '#FFF0D6',
 };
 
-const COUNTRIES = [
-  { name: 'Guinée', dial: '+224' }, { name: 'France', dial: '+33' },
-];
-
-const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-const normalizePhone = value => String(value || '').replace(/[\s()-]/g, '');
+const COUNTRIES = [{ name: 'Guinée', dial: '+224' }, { name: 'France', dial: '+33' }];
 
 const demoHash = (input) => {
   let h = 5381;
-  for (let i = 0; i < input.length; i++) {
-    h = (h * 33) ^ input.charCodeAt(i);
-  }
+  for (let i = 0; i < input.length; i++) h = (h * 33) ^ input.charCodeAt(i);
   return (h >>> 0).toString(16);
 };
 
-// Formate la date (JJ/MM/AAAA) automatiquement
 const formatDateInput = (value) => {
   const digits = value.replace(/\D/g, '').slice(0, 8);
   if (digits.length <= 2) return digits;
@@ -36,38 +26,22 @@ const formatDateInput = (value) => {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 };
 
-// Valide la date (y compris les jours existants)
-const isValidDate = (dateStr) => {
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return false;
-  const [d, m, y] = dateStr.split('/').map(Number);
-  const date = new Date(y, m - 1, d);
-  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return false;
-  const age = (Date.now() - date.getTime()) / (365.2425 * 86400000);
-  return age >= 13 && age <= 120;
-};
-
-/* =========================================================
-   COMPOSANTS
-   ========================================================= */
-function Button({ title, onPress, secondary = false, danger = false }) {
+function Button({ title, onPress, secondary = false }) {
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress}
-      style={[styles.button, secondary && styles.buttonSecondary, danger && styles.buttonDanger]}>
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={[styles.button, secondary && styles.buttonSecondary]}>
       <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{title}</Text>
     </TouchableOpacity>
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry = false,
-  keyboardType = 'default', maxLength, autoCapitalize = 'none', returnKeyType = 'next', onSubmitEditing }) {
+function Field({ label, value, onChangeText, placeholder, secureTextEntry = false, keyboardType = 'default', maxLength }) {
   return (
     <View style={styles.fieldWrap}>
       {!!label && <Text style={styles.label}>{label}</Text>}
       <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder}
         placeholderTextColor="#9AA59F" secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType} maxLength={maxLength} autoCapitalize={autoCapitalize}
-        autoCorrect={false} returnKeyType={returnKeyType} onSubmitEditing={onSubmitEditing}
-        blurOnSubmit={returnKeyType === 'done'} style={styles.input} />
+        keyboardType={keyboardType} maxLength={maxLength} autoCapitalize="none"
+        autoCorrect={false} style={styles.input} />
     </View>
   );
 }
@@ -75,239 +49,296 @@ function Field({ label, value, onChangeText, placeholder, secureTextEntry = fals
 function Header({ title, onBack }) {
   return (
     <View style={styles.header}>
-      <TouchableOpacity onPress={onBack} style={styles.backButton} activeOpacity={0.7}>
-        <Text style={styles.backText}>‹</Text>
-      </TouchableOpacity>
+      <TouchableOpacity onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
       <Text style={styles.headerTitle}>{title}</Text>
       <View style={{ width: 35 }} />
     </View>
   );
 }
 
-/* =========================================================
-   APP
-   ========================================================= */
 export default function App() {
   const [screen, setScreen] = useState('welcome'); 
   const [notice, setNotice] = useState('');
 
-  // --- ÉTATS MESSAGERIE ---
-  const [messagingAccount, setMessagingAccount] = useState(null);
-  const [msgFullName, setMsgFullName] = useState('');
+  // ÉTATS MESSAGERIE
+  const [msgUser, setMsgUser] = useState(null);
+  const [msgName, setMsgName] = useState('');
   const [msgPhone, setMsgPhone] = useState('');
   const [msgPassword, setMsgPassword] = useState('');
-  const [msgBirthDate, setMsgBirthDate] = useState('');
+  const [msgBirth, setMsgBirth] = useState('');
+  const [msgOtp, setMsgOtp] = useState('');
 
-  // --- ÉTATS SOCIAL ---
-  const [socialAccount, setSocialAccount] = useState(null);
+  // ÉTATS SOCIAL
+  const [socUser, setSocUser] = useState(null);
   const [socName, setSocName] = useState('');
-  const [socBirthDate, setSocBirthDate] = useState('');
   const [socContact, setSocContact] = useState('');
   const [socPassword, setSocPassword] = useState('');
+  const [socBirth, setSocBirth] = useState('');
+  const [socOtp, setSocOtp] = useState('');
+
+  // ÉTATS CHAT
+  const [messages, setMessages] = useState([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
 
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 3500);
+    const timer = setTimeout(() => setNotice(''), 3000);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  function go(next) {
-    Keyboard.dismiss();
-    setNotice('');
-    setScreen(next);
+  function go(next) { setNotice(''); setScreen(next); }
+
+  // --- MESSAGERIE : Envoi du code ---
+  async function sendMsgOtp() {
+    if (!msgName || !msgPhone || !msgPassword) return setNotice('Remplis tous les champs.');
+    setNotice('Envoi du code...');
+    try {
+      await fetch(`${API_URL}/auth/send-otp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: msgPhone, country_dial: COUNTRIES[0].dial })
+      });
+      go('msg_scan');
+    } catch { setNotice('Erreur de connexion.'); }
   }
 
-  // --- LOGIQUE MESSAGERIE ---
-  async function registerMessaging() {
-    if (!msgFullName.trim() || !msgPhone.trim() || !msgPassword) return setNotice('Remplis tous les champs.');
-    if (!isValidDate(msgBirthDate)) return setNotice('Date de naissance invalide.');
-    
-    const newAcc = { name: msgFullName, phone: msgPhone, country: COUNTRIES[0] };
-    setMessagingAccount(newAcc);
-    go('home_messaging');
-    setNotice('Compte messagerie créé !');
+  // --- SCAN VISAGE (Simulation) ---
+  function finishMsgScan() { go('msg_otp'); setNotice('Visage vérifié (simulation) !'); }
+  function finishSocScan() { go('soc_otp'); setNotice('Visage vérifié (simulation) !'); }
+
+  // --- MESSAGERIE : Vérification OTP ---
+  async function verifyMsgOtp() {
+    if (msgOtp !== '123456') return setNotice('Code incorrect (utilise 123456).');
+    try {
+      const res = await fetch(`${API_URL}/auth/verify-otp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: msgPhone, country_dial: COUNTRIES[0].dial, code: msgOtp, name: msgName, birth_date: msgBirth, password: demoHash(msgPassword) })
+      });
+      if (res.ok) {
+        setMsgUser({ name: msgName, phone: msgPhone });
+        go('msg_home');
+      } else { setNotice('Erreur serveur.'); }
+    } catch { setNotice('Erreur de connexion.'); }
   }
 
-  // --- LOGIQUE SOCIAL ---
-  async function registerSocial() {
-    if (!socName.trim() || !socContact.trim() || !socPassword) return setNotice('Remplis tous les champs.');
-    if (!isValidDate(socBirthDate)) return setNotice('Date de naissance invalide.');
-    
-    setNotice('Vérification du visage en cours...');
-    setTimeout(() => {
-      const newAcc = { name: socName, contact: socContact };
-      setSocialAccount(newAcc);
-      go('home_social');
-      setNotice('Compte social créé avec succès !');
-    }, 1500);
+  // --- SOCIAL : Envoi du code ---
+  async function sendSocOtp() {
+    if (!socName || !socContact || !socPassword) return setNotice('Remplis tous les champs.');
+    setNotice('Envoi du code...');
+    try {
+      await fetch(`${API_URL}/social/send-otp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: socContact, name: socName, birth_date: socBirth, password: socPassword })
+      });
+      go('soc_scan');
+    } catch { setNotice('Erreur de connexion.'); }
   }
 
-  // --- DÉCONNEXION POUR PASSER D'UN ESPACE À L'AUTRE ---
-  function switchSpace() {
-    // Au lieu de passer directement à l'autre compte, on déconnecte et on ramène à l'accueil
-    setMessagingAccount(null);
-    setSocialAccount(null);
-    go('welcome');
-    setNotice('Choisis l\'espace de ton choix.');
+  // --- SOCIAL : Vérification OTP ---
+  async function verifySocOtp() {
+    if (socOtp !== '123456') return setNotice('Code incorrect (utilise 123456).');
+    try {
+      const res = await fetch(`${API_URL}/social/verify-otp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: socContact, name: socName, birth_date: socBirth, password: socPassword, code: socOtp })
+      });
+      if (res.ok) {
+        setSocUser({ name: socName, contact: socContact });
+        go('soc_home');
+      } else { setNotice('Erreur serveur.'); }
+    } catch { setNotice('Erreur de connexion.'); }
+  }
+
+  // --- ENVOYER UN MESSAGE ---
+  async function sendMessage() {
+    if (!newMessageText || !recipientPhone) return setNotice('Remplis le texte et le destinataire.');
+    setNotice('Envoi...');
+    try {
+      const res = await fetch(`${API_URL}/messages/send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender_phone: msgUser.phone, recipient_phone: recipientPhone, text: newMessageText })
+      });
+      if (res.ok) {
+        setMessages([...messages, { text: newMessageText, mine: true }]);
+        setNewMessageText('');
+        setNotice('Message envoyé !');
+      } else { setNotice('Destinataire introuvable.'); }
+    } catch { setNotice('Erreur de connexion.'); }
+  }
+
+  // --- PASSERELLE ---
+  function toSocial() {
+    if (socUser) go('soc_home');
+    else go('soc_register');
+  }
+  function toMessaging() {
+    if (msgUser) go('msg_home');
+    else go('msg_register');
   }
 
   // =========================================================
-  // RENDU DES ÉCRANS
+  // ÉCRANS
   // =========================================================
-
   if (screen === 'welcome') {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
         <View style={styles.hero}>
           <View style={styles.logo}><Text style={styles.logoText}>T</Text></View>
           <Text style={styles.brand}>TMD Messenger</Text>
-          <Text style={styles.subtitle}>Choisis ton espace.</Text>
         </View>
         <View style={styles.card}>
-          <TouchableOpacity style={styles.bigButton} onPress={() => go('messaging_auth')}>
-            <Text style={styles.bigButtonIcon}>💬</Text>
-            <Text style={styles.bigButtonTitle}>Messagerie</Text>
-            <Text style={styles.bigButtonSubtitle}>Discussions privées</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => go('social_auth')}>
-            <Text style={styles.bigButtonIcon}>🌍</Text>
-            <Text style={styles.bigButtonTitle}>Réseau Social</Text>
-            <Text style={styles.bigButtonSubtitle}>Partage public</Text>
-          </TouchableOpacity>
+          <Button title="Messagerie" onPress={() => go('msg_login')} />
+          <Button title="Réseau Social" secondary onPress={() => go('soc_login')} />
         </View>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'messaging_auth' || screen === 'social_auth') {
-    const isSocial = screen === 'social_auth';
+  // --- LOGIN MESSAGERIE ---
+  if (screen === 'msg_login') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title={isSocial ? 'Réseau Social' : 'Messagerie'} onBack={() => go('welcome')} />
+        <Header title="Messagerie" onBack={() => go('welcome')} />
         <ScrollView contentContainerStyle={styles.page}>
-          <Text style={styles.title}>{isSocial ? 'Bienvenue sur le Social' : 'Bienvenue sur la Messagerie'}</Text>
-          <Text style={styles.body}>
-            {isSocial ? 'Partage avec le monde.' : 'Discute en privé avec tes contacts.'}
-          </Text>
-          <Button title="Créer un compte" onPress={() => go(isSocial ? 'social_register' : 'messaging_register')} />
-          <Button title="Se connecter" secondary onPress={() => setNotice('Connexion à venir.')} />
+          <Button title="Créer un compte" onPress={() => go('msg_register')} />
+          <Button title="Se connecter (bientôt)" secondary onPress={() => setNotice('Fonctionnalité à venir.')} />
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'messaging_register') {
+  // --- REGISTER MESSAGERIE ---
+  if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Messagerie" onBack={() => go('messaging_auth')} />
+        <Header title="Inscription Messagerie" onBack={() => go('msg_login')} />
         <ScrollView contentContainerStyle={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          
-          <Field label="Nom complet" value={msgFullName} onChangeText={setMsgFullName} placeholder="Ex. TMD Diallo" />
-          <Field label="Pays" value={COUNTRIES[0].name} editable={false} />
-          <Field label="Téléphone" value={msgPhone} onChangeText={setMsgPhone} keyboardType="phone-pad" placeholder="620000000" />
-          <Field 
-            label="Date de naissance" 
-            value={msgBirthDate} 
-            onChangeText={v => setMsgBirthDate(formatDateInput(v))} 
-            placeholder="JJ/MM/AAAA" 
-            keyboardType="number-pad" 
-            maxLength={10}
-          />
+          <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
+          <Field label="Téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
+          <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
           <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} secureTextEntry />
-          <Button title="Continuer" onPress={registerMessaging} />
+          <Button title="Continuer vers le scan" onPress={sendMsgOtp} />
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'social_register') {
+  // --- SCAN VISAGE (Avant OTP) ---
+  if (screen === 'msg_scan' || screen === 'soc_scan') {
+    const isMsg = screen === 'msg_scan';
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Sociale" onBack={() => go('social_auth')} />
+        <View style={styles.faceHero}>
+          <View style={styles.faceIcon}><Text style={{ fontSize: 54 }}>🙂</Text></View>
+          <Text style={styles.title}>Vérification du visage</Text>
+          <Text style={styles.bodyCenter}>Simulation du scan de présence réelle avant l'envoi du code SMS.</Text>
+          <Button title="Terminer le scan" onPress={isMsg ? finishMsgScan : finishSocScan} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // --- OTP MESSAGERIE ---
+  if (screen === 'msg_otp') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Header title="Code SMS" onBack={() => go('msg_register')} />
         <ScrollView contentContainerStyle={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          
-          <Field label="Nom et prénom" value={socName} onChangeText={setSocName} placeholder="Ton nom public" />
-          <Field 
-            label="Date de naissance (Privée)" 
-            value={socBirthDate} 
-            onChangeText={v => setSocBirthDate(formatDateInput(v))} 
-            placeholder="JJ/MM/AAAA" 
-            keyboardType="number-pad" 
-            maxLength={10}
-          />
-          <Field label="Email ou Téléphone" value={socContact} onChangeText={setSocContact} placeholder="Pour récupérer ton compte" />
-          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} secureTextEntry />
-          
-          <View style={styles.scanBox}>
-            <Text style={styles.scanIcon}>🙂</Text>
-            <Text style={styles.scanText}>Vérification du visage obligatoire à la création</Text>
-          </View>
-          
-          <Button title="Créer mon compte Social" onPress={registerSocial} />
+          <Text style={styles.body}>Code envoyé au {msgPhone}.</Text>
+          <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
+          <Button title="Vérifier et créer le compte" onPress={verifyMsgOtp} />
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'home_messaging') {
+  // --- ACCUEIL MESSAGERIE ---
+  if (screen === 'msg_home') {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+        {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
         <View style={styles.homeHeader}>
-          <View>
-            <Text style={styles.greeting}>Messagerie</Text>
-            <Text style={styles.homeName}>{messagingAccount?.name}</Text>
-          </View>
-          <TouchableOpacity style={styles.switchButton} onPress={switchSpace}>
-            <Text style={styles.switchText}>🌍 Aller au Social</Text>
-          </TouchableOpacity>
+          <Text style={styles.homeName}>Messagerie : {msgUser?.name}</Text>
+          <TouchableOpacity style={styles.switchButton} onPress={toSocial}><Text style={styles.switchText}>🌍 Social</Text></TouchableOpacity>
         </View>
-        
         <ScrollView contentContainerStyle={styles.homeContent}>
-          <Text style={styles.sectionTitle}>Tes conversations</Text>
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>Aucun message</Text>
-            <Text style={styles.bodyCenter}>Commence une conversation.</Text>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Envoyer un message</Text>
+            <Field label="Numéro du destinataire" value={recipientPhone} onChangeText={setRecipientPhone} placeholder="620000000" keyboardType="phone-pad" />
+            <Field label="Message" value={newMessageText} onChangeText={setNewMessageText} placeholder="Ton message" />
+            <Button title="Envoyer" onPress={sendMessage} />
           </View>
+          {messages.map((m, i) => (
+            <View key={i} style={styles.messageBubble}>
+              <Text style={styles.messageText}>{m.text}</Text>
+            </View>
+          ))}
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'home_social') {
+  // --- LOGIN SOCIAL ---
+  if (screen === 'soc_login') {
     return (
       <SafeAreaView style={styles.safe}>
-        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
-        <View style={styles.homeHeader}>
-          <View>
-            <Text style={styles.greeting}>Réseau Social</Text>
-            <Text style={styles.homeName}>{socialAccount?.name}</Text>
-          </View>
-          <TouchableOpacity style={styles.switchButton} onPress={switchSpace}>
-            <Text style={styles.switchText}>💬 Aller à la Messagerie</Text>
-          </TouchableOpacity>
-        </View>
+        <Header title="Réseau Social" onBack={() => go('welcome')} />
+        <ScrollView contentContainerStyle={styles.page}>
+          <Button title="Créer un compte" onPress={() => go('soc_register')} />
+          <Button title="Se connecter (bientôt)" secondary onPress={() => setNotice('Fonctionnalité à venir.')} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
+  // --- REGISTER SOCIAL ---
+  if (screen === 'soc_register') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Header title="Inscription Sociale" onBack={() => go('soc_login')} />
+        <ScrollView contentContainerStyle={styles.page}>
+          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+          <Field label="Nom et prénom" value={socName} onChangeText={setSocName} placeholder="Ton nom public" />
+          <Field label="Date de naissance (Privée)" value={socBirth} onChangeText={v => setSocBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
+          <Field label="Email ou Téléphone" value={socContact} onChangeText={setSocContact} placeholder="Contact" />
+          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} secureTextEntry />
+          <Button title="Continuer vers le scan" onPress={sendSocOtp} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // --- OTP SOCIAL ---
+  if (screen === 'soc_otp') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Header title="Code Social" onBack={() => go('soc_register')} />
+        <ScrollView contentContainerStyle={styles.page}>
+          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+          <Text style={styles.body}>Code envoyé au {socContact}.</Text>
+          <Field label="Code (123456)" value={socOtp} onChangeText={setSocOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
+          <Button title="Vérifier et créer le compte" onPress={verifySocOtp} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // --- ACCUEIL SOCIAL ---
+  if (screen === 'soc_home') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+        <View style={styles.homeHeader}>
+          <Text style={styles.homeName}>Social : {socUser?.name}</Text>
+          <TouchableOpacity style={styles.switchButton} onPress={toMessaging}><Text style={styles.switchText}>💬 Messagerie</Text></TouchableOpacity>
+        </View>
         <ScrollView contentContainerStyle={styles.homeContent}>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Nouvelle publication</Text>
-            <TextInput 
-              placeholder="Quoi de neuf ?" 
-              style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12 }]} 
-              multiline 
-            />
-            <Button title="Publier" onPress={() => setNotice('Publication envoyée !')} />
-          </View>
-          
-          <Text style={styles.sectionTitle}>Le Feed</Text>
-          <View style={styles.postCard}>
-            <Text style={styles.postAuthor}>Thierno</Text>
-            <Text style={styles.postText}>Bienvenue sur le réseau social TMD ! 🚀</Text>
-            <Text style={styles.postTime}>À l'instant</Text>
+            <TextInput placeholder="Quoi de neuf ?" style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12 }]} multiline />
+            <Button title="Publier" onPress={() => setNotice('Publication simulée !')} />
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -323,49 +354,31 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', paddingTop: 60, paddingBottom: 30 },
   logo: { width: 90, height: 90, borderRadius: 30, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
   logoText: { color: C.white, fontSize: 48, fontWeight: '900' },
-  brand: { color: C.dark, fontSize: 32, fontWeight: '900', letterSpacing: -0.6 },
-  subtitle: { color: C.muted, fontSize: 18, marginTop: 8, textAlign: 'center' },
+  brand: { color: C.dark, fontSize: 32, fontWeight: '900' },
   card: { backgroundColor: C.white, borderRadius: 24, padding: 20, marginTop: 12, borderWidth: 1, borderColor: '#E9EFEB' },
   title: { color: C.dark, fontSize: 26, fontWeight: '800', marginBottom: 12 },
-  body: { color: C.muted, fontSize: 16, lineHeight: 24, marginBottom: 24 },
-  button: { backgroundColor: C.green, borderRadius: 15, minHeight: 54, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, marginTop: 16 },
+  body: { color: C.muted, fontSize: 16, marginBottom: 12 },
+  bodyCenter: { color: C.muted, fontSize: 15, textAlign: 'center', marginTop: 10, marginBottom: 18 },
+  button: { backgroundColor: C.green, borderRadius: 15, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   buttonText: { color: C.white, fontSize: 17, fontWeight: '800' },
   buttonSecondary: { backgroundColor: C.green2, borderWidth: 1, borderColor: '#D1E8DC' },
   buttonSecondaryText: { color: C.green },
   fieldWrap: { marginBottom: 14 },
   label: { color: C.dark, fontWeight: '700', fontSize: 15, marginBottom: 8, marginTop: 12 },
   input: { minHeight: 52, borderWidth: 1, borderColor: C.border, backgroundColor: C.bg, borderRadius: 13, paddingHorizontal: 14, color: C.dark, fontSize: 16 },
-  
-  bigButton: { backgroundColor: C.bg, borderRadius: 20, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: C.border },
-  bigButtonIcon: { fontSize: 48, marginBottom: 12 },
-  bigButtonTitle: { color: C.dark, fontSize: 22, fontWeight: '800', marginBottom: 6 },
-  bigButtonSubtitle: { color: C.muted, fontSize: 14, textAlign: 'center' },
-  
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   backButton: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   backText: { fontSize: 34, color: C.green, lineHeight: 38, marginTop: -4 },
   headerTitle: { color: C.dark, fontSize: 19, fontWeight: '800', flex: 1 },
-  
-  homeHeader: { paddingHorizontal: 22, paddingTop: 20, paddingBottom: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.border },
-  greeting: { color: C.muted, fontSize: 14, fontWeight: '700', textTransform: 'uppercase' },
-  homeName: { color: C.dark, fontSize: 24, fontWeight: '900', marginTop: 4 },
+  faceHero: { flex: 1, justifyContent: 'center', padding: 24 },
+  faceIcon: { width: 104, height: 104, borderRadius: 52, borderWidth: 6, borderColor: '#368460', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 28 },
+  homeHeader: { padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.border },
+  homeName: { color: C.dark, fontSize: 20, fontWeight: '900' },
   switchButton: { backgroundColor: C.green2, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
   switchText: { color: C.green, fontWeight: '800', fontSize: 13 },
-  
   homeContent: { padding: 20 },
   sectionTitle: { color: C.dark, fontSize: 22, fontWeight: '800', marginBottom: 16 },
-  
-  scanBox: { backgroundColor: '#E8F5EE', padding: 20, borderRadius: 20, alignItems: 'center', marginTop: 20, marginBottom: 10 },
-  scanIcon: { fontSize: 50, marginBottom: 10 },
-  scanText: { color: '#28684F', fontSize: 15, fontWeight: '700', textAlign: 'center' },
-
-  postCard: { backgroundColor: C.white, borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#EAF0EC' },
-  postAuthor: { color: C.green, fontSize: 15, fontWeight: '800', marginBottom: 8 },
-  postText: { color: C.dark, fontSize: 15, lineHeight: 22 },
-  postTime: { color: C.muted, fontSize: 11, marginTop: 8, textAlign: 'right' },
-
   errorText: { color: C.red, fontSize: 13, textAlign: 'center', marginBottom: 10, fontWeight: '600' },
-  emptyBox: { backgroundColor: C.white, borderRadius: 18, padding: 22, marginTop: 12, alignItems: 'center' },
-  emptyTitle: { color: C.dark, fontSize: 17, fontWeight: '800', marginBottom: 5 },
-  bodyCenter: { color: C.muted, fontSize: 15, lineHeight: 24, textAlign: 'center' },
+  messageBubble: { backgroundColor: C.green2, padding: 12, borderRadius: 12, marginBottom: 8, alignSelf: 'flex-end' },
+  messageText: { color: C.dark, fontSize: 15 },
 });
