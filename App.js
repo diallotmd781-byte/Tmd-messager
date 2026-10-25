@@ -3,9 +3,7 @@ import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, Keyboard
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STORAGE_KEY = '@tmd_messenger_v4';
 const API_URL = 'https://tmd-messager.onrender.com';
 
 const C = {
@@ -150,7 +148,6 @@ function Page({ children, notice, clearNotice, onBack, title }) {
    ========================================================= */
 export default function App() {
   const [screen, setScreen] = useState('welcome');
-  const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [savedAccount, setSavedAccount] = useState(null);
   const [account, setAccount] = useState(null);
@@ -158,7 +155,6 @@ export default function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [tab, setTab] = useState('messages');
   
-  // Formulaire d'inscription
   const [fullName, setFullName] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [country, setCountry] = useState(COUNTRIES[0]);
@@ -182,32 +178,11 @@ export default function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
-  useEffect(() => { loadSavedData(); }, []);
-
-  useEffect(() => {
-    if (loading) return;
-    const data = { savedAccount, chats, pseudonym, notificationsEnabled };
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data)).catch(err => console.log('Erreur de sauvegarde :', err));
-  }, [savedAccount, chats, pseudonym, notificationsEnabled, loading]);
-
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 3500);
     return () => clearTimeout(timer);
   }, [notice]);
-
-  async function loadSavedData() {
-    try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data.savedAccount) setSavedAccount(data.savedAccount);
-        if (Array.isArray(data.chats)) setChats(data.chats);
-        if (typeof data.pseudonym === 'string') setPseudonym(data.pseudonym);
-        if (typeof data.notificationsEnabled === 'boolean') setNotificationsEnabled(data.notificationsEnabled);
-      }
-    } catch (err) { console.log('Erreur de lecture locale :', err); } finally { setLoading(false); }
-  }
 
   function go(next) {
     Keyboard.dismiss();
@@ -215,7 +190,6 @@ export default function App() {
     setScreen(next);
   }
 
-  /* ------------------------ INSCRIPTION ------------------------ */
   async function register() {
     if (!fullName.trim()) return setNotice('Entre ton nom complet.');
     if (!validBirthDate(birthDate)) return setNotice('Date invalide. JJ/MM/AAAA, âge 13-120.');
@@ -245,7 +219,6 @@ export default function App() {
     }
   }
 
-  // ✅ NOUVELLE FONCTION : Envoie les vraies infos au serveur
   async function verifyOtp() {
     if (!otpCode || otpCode.length !== 6) return setNotice('Entre le code à 6 chiffres.');
     
@@ -261,7 +234,7 @@ export default function App() {
           code: otpCode,
           name: fullName.trim(),
           birth_date: birthDate,
-          password: demoHash(password) 
+          password: demoHash(password)
         })
       });
       
@@ -283,9 +256,8 @@ export default function App() {
     }
   }
 
-  /* ------------------------ CONNEXION ------------------------ */
   function login() {
-    if (!savedAccount) return setNotice('Aucun compte enregistré.');
+    if (!savedAccount) return setNotice('Aucun compte enregistré dans cette session.');
     const entered = normalizePhone(loginPhone);
     const local = normalizePhone(savedAccount.phone);
     const inter = normalizePhone(`${savedAccount.country.dial}${savedAccount.phone}`);
@@ -304,7 +276,6 @@ export default function App() {
     go('setcode');
   }
 
-  /* ------------------------ CODE ------------------------ */
   function saveSecurityCode() {
     if (securityCode.length !== 8) return setNotice('Le code doit contenir 8 caractères.');
     if (securityCode !== confirmSecurityCode) return setNotice('Les codes ne correspondent pas.');
@@ -333,14 +304,12 @@ export default function App() {
     go('home');
   }
 
-  /* ------------------------ CHAT ------------------------ */
   function openChat(id) {
     setActiveChatId(id);
     setChats(prev => prev.map(c => c.id === id ? { ...c, unread: 0 } : c));
     go('chat');
   }
 
-  // ✅ NOUVELLE FONCTION : Envoie le message au serveur Render
   async function sendMessage() {
     const text = messageText.trim();
     if (!text || !activeChat) return;
@@ -413,7 +382,6 @@ export default function App() {
     });
   }
 
-  /* ------------------------ DÉCONNEXION ------------------------ */
   function logout() {
     setAccount(null); setActiveChatId(null); setLoginPhone(''); setLoginPassword(''); setEnteredCode(''); setMessageText('');
     go('welcome'); setNotice('Tu es déconnecté.');
@@ -421,41 +389,23 @@ export default function App() {
 
   function askClearLocalData() {
     setConfirmDialog({
-      title: 'Effacer les données ?', message: 'Le compte et les conversations enregistrés seront supprimés.', confirmText: 'Tout effacer', danger: true,
+      title: 'Effacer les données ?', message: 'Le compte et les conversations seront supprimés.', confirmText: 'Tout effacer', danger: true,
       onConfirm: async () => {
         setConfirmDialog(null);
-        try {
-          await AsyncStorage.removeItem(STORAGE_KEY);
-          setSavedAccount(null); setAccount(null); setChats(starterChats); setPseudonym('');
-          setNotificationsEnabled(true); setActiveChatId(null); setTab('messages');
-          setFullName(''); setBirthDate(''); setPhone(''); setPassword(''); setConfirmPassword('');
-          setLoginPhone(''); setLoginPassword(''); go('welcome');
-        } catch { setNotice('Impossible de supprimer les données.'); }
+        setSavedAccount(null); setAccount(null); setChats(starterChats); setPseudonym('');
+        setNotificationsEnabled(true); setActiveChatId(null); setTab('messages');
+        setFullName(''); setBirthDate(''); setPhone(''); setPassword(''); setConfirmPassword('');
+        setLoginPhone(''); setLoginPassword(''); go('welcome');
       },
     });
   }
 
-  /* ------------------------ DONNÉES DÉRIVÉES ------------------------ */
   const activeChat = useMemo(() => chats.find(c => c.id === activeChatId), [chats, activeChatId]);
   const filteredChats = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return chats;
     return chats.filter(c => c.name.toLowerCase().includes(q) || (c.pseudonym || '').toLowerCase().includes(q) || (c.last || '').toLowerCase().includes(q));
   }, [chats, search]);
-
-  /* =========================================================
-     ÉCRANS
-     ========================================================= */
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.safe, styles.center]}>
-        <StatusBar barStyle="dark-content" />
-        <View style={styles.logo}><Text style={styles.logoText}>T</Text></View>
-        <Text style={styles.brand}>TMD Messenger</Text>
-        <Text style={styles.body}>Chargement des données locales…</Text>
-      </SafeAreaView>
-    );
-  }
 
   if (screen === 'welcome') {
     return (
@@ -819,9 +769,9 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 17, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: C.green, fontSize: 22, fontWeight: '900' },
   homeContent: { paddingHorizontal: 18, paddingBottom: 24 },
-  searchInput: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 15, padding: 14, marginBottom: 20, color: C.dark, fontSize: 15 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  sectionTitle: { color: C.dark, fontSize: 21, fontWeight: '800', marginBottom: 10 },
+  searchInput: { backgroundColor: C.white, borderWidth: ',1, borderColor: C.border, borderRadius: 15 margin, padding: 14,Bottom marginBottom: 20, color: C:.dark, fontSize: 15 },
+   sectionHeader: { flexDirection:10 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  sectionTitle: { color: C.dark, fontSize: 21, fontWeight: '800 },
   addButton: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
   addButtonText: { color: C.white, fontSize: 28, lineHeight: 32 },
   chatRow: { backgroundColor: C.white, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#EAF0EC' },
@@ -833,8 +783,9 @@ const styles = StyleSheet.create({
   noticeCard: { backgroundColor: '#EAF2FF', padding: 18, borderRadius: 18, marginTop: 16 },
   noticeCardTitle: { color: C.dark, fontWeight: '800', fontSize: 16, marginBottom: 8 },
   tabBar: { flexDirection: 'row', backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10, paddingBottom: 8 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabIcon: { fontSize: 22, color: C.muted },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: },
+ 'center' },
+  tabIcon: {  fontSize: 22, color: C status.muted },
   tabLabel: { fontSize: 12, color: C.muted, marginTop: 3, fontWeight: '700' },
   activeTab: { color: C.green },
   profileCard: { backgroundColor: C.white, borderRadius: 22, alignItems: 'center', padding: 24, marginBottom: 16 },
@@ -855,8 +806,7 @@ const styles = StyleSheet.create({
   theirBubble: { backgroundColor: C.white, alignSelf: 'flex-start', borderBottomLeftRadius: 5, borderWidth: 1, borderColor: C.border },
   bubbleText: { color: C.dark, fontSize: 15, lineHeight: 21 },
   messageFooter: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 5 },
-  time: { color: C.muted, fontSize: 10 },
-  statusText: { color: '#D9F4E7', fontSize: 11, marginLeft: 5, fontWeight: '900' },
+  time: { color: C.muted, fontSize: 10Text: { color: '#D9F4E7', fontSize: 11, marginLeft: 5, fontWeight: '900' },
   composer: { flexDirection: 'row', alignItems: 'flex-end', padding: 12, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.white },
   composerInput: { flex: 1, minHeight: 46, maxHeight: 120, backgroundColor: C.bg, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, color: C.dark, fontSize: 15 },
   sendButton: { width: 46, height: 46, borderRadius: 16, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginLeft: 8 },
