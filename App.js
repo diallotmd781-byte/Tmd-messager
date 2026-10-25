@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, Keyboard
+  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 
 const API_URL = 'https://tmd-messager.onrender.com';
@@ -14,24 +14,6 @@ const C = {
 
 const COUNTRIES = [
   { name: 'Guinée', dial: '+224' }, { name: 'France', dial: '+33' },
-  { name: 'Belgique', dial: '+32' }, { name: 'Sénégal', dial: '+221' },
-  { name: 'Côte d’Ivoire', dial: '+225' }, { name: 'Mali', dial: '+223' },
-  { name: 'Maroc', dial: '+212' }, { name: 'Canada', dial: '+1' },
-  { name: 'États-Unis', dial: '+1' }, { name: 'Royaume-Uni', dial: '+44' },
-  { name: 'Allemagne', dial: '+49' }, { name: 'Espagne', dial: '+34' },
-  { name: 'Italie', dial: '+39' }, { name: 'Nigeria', dial: '+234' },
-  { name: 'Cameroun', dial: '+237' }, { name: 'Gambie', dial: '+220' },
-];
-
-const starterChats = [
-  {
-    id: 'welcome', name: 'Bienvenue sur TMD', pseudonym: 'TMD', phone: '',
-    last: 'Bienvenue sur TMD Messenger !', unread: 0,
-    messages: [
-      { id: 'welcome-1', text: 'Bienvenue sur TMD Messenger 👋', mine: false, time: '09:00', status: 'Distribué' },
-      { id: 'welcome-2', text: 'Cette version est une démonstration locale.', mine: false, time: '09:01', status: 'Distribué' },
-    ],
-  },
 ];
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -44,6 +26,24 @@ const demoHash = (input) => {
     h = (h * 33) ^ input.charCodeAt(i);
   }
   return (h >>> 0).toString(16);
+};
+
+// Formate la date (JJ/MM/AAAA) automatiquement
+const formatDateInput = (value) => {
+  const digits = value.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+// Valide la date (y compris les jours existants)
+const isValidDate = (dateStr) => {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) return false;
+  const [d, m, y] = dateStr.split('/').map(Number);
+  const date = new Date(y, m - 1, d);
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return false;
+  const age = (Date.now() - date.getTime()) / (365.2425 * 86400000);
+  return age >= 13 && age <= 120;
 };
 
 /* =========================================================
@@ -88,19 +88,17 @@ function Header({ title, onBack }) {
    APP
    ========================================================= */
 export default function App() {
-  // Navigation: 'welcome', 'messaging_auth', 'social_auth', 'messaging_register', 'social_register', 'home_messaging', 'home_social'
-  const [screen, setScreen] = useState('welcome');
+  const [screen, setScreen] = useState('welcome'); 
   const [notice, setNotice] = useState('');
 
-  // États Messagerie
+  // --- ÉTATS MESSAGERIE ---
   const [messagingAccount, setMessagingAccount] = useState(null);
   const [msgFullName, setMsgFullName] = useState('');
-  const [msgCountry] = useState(COUNTRIES[0]);
   const [msgPhone, setMsgPhone] = useState('');
   const [msgPassword, setMsgPassword] = useState('');
   const [msgBirthDate, setMsgBirthDate] = useState('');
 
-  // États Social
+  // --- ÉTATS SOCIAL ---
   const [socialAccount, setSocialAccount] = useState(null);
   const [socName, setSocName] = useState('');
   const [socBirthDate, setSocBirthDate] = useState('');
@@ -122,25 +120,35 @@ export default function App() {
   // --- LOGIQUE MESSAGERIE ---
   async function registerMessaging() {
     if (!msgFullName.trim() || !msgPhone.trim() || !msgPassword) return setNotice('Remplis tous les champs.');
-    // Simulation d'inscription
-    const newAcc = { name: msgFullName, phone: msgPhone, country: msgCountry };
+    if (!isValidDate(msgBirthDate)) return setNotice('Date de naissance invalide.');
+    
+    const newAcc = { name: msgFullName, phone: msgPhone, country: COUNTRIES[0] };
     setMessagingAccount(newAcc);
     go('home_messaging');
-    setNotice('Compte messagerie créé (simulation) !');
+    setNotice('Compte messagerie créé !');
   }
 
   // --- LOGIQUE SOCIAL ---
   async function registerSocial() {
     if (!socName.trim() || !socContact.trim() || !socPassword) return setNotice('Remplis tous les champs.');
+    if (!isValidDate(socBirthDate)) return setNotice('Date de naissance invalide.');
     
     setNotice('Vérification du visage en cours...');
-    // Simulation du scan visage (obligatoire)
     setTimeout(() => {
       const newAcc = { name: socName, contact: socContact };
       setSocialAccount(newAcc);
       go('home_social');
       setNotice('Compte social créé avec succès !');
     }, 1500);
+  }
+
+  // --- DÉCONNEXION POUR PASSER D'UN ESPACE À L'AUTRE ---
+  function switchSpace() {
+    // Au lieu de passer directement à l'autre compte, on déconnecte et on ramène à l'accueil
+    setMessagingAccount(null);
+    setSocialAccount(null);
+    go('welcome');
+    setNotice('Choisis l\'espace de ton choix.');
   }
 
   // =========================================================
@@ -195,10 +203,19 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <Header title="Inscription Messagerie" onBack={() => go('messaging_auth')} />
         <ScrollView contentContainerStyle={styles.page}>
+          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+          
           <Field label="Nom complet" value={msgFullName} onChangeText={setMsgFullName} placeholder="Ex. TMD Diallo" />
-          <Field label="Pays" value={msgCountry.name} editable={false} />
+          <Field label="Pays" value={COUNTRIES[0].name} editable={false} />
           <Field label="Téléphone" value={msgPhone} onChangeText={setMsgPhone} keyboardType="phone-pad" placeholder="620000000" />
-          <Field label="Date de naissance" value={msgBirthDate} onChangeText={setMsgBirthDate} placeholder="JJ/MM/AAAA" />
+          <Field 
+            label="Date de naissance" 
+            value={msgBirthDate} 
+            onChangeText={v => setMsgBirthDate(formatDateInput(v))} 
+            placeholder="JJ/MM/AAAA" 
+            keyboardType="number-pad" 
+            maxLength={10}
+          />
           <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} secureTextEntry />
           <Button title="Continuer" onPress={registerMessaging} />
         </ScrollView>
@@ -211,8 +228,17 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <Header title="Inscription Sociale" onBack={() => go('social_auth')} />
         <ScrollView contentContainerStyle={styles.page}>
+          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+          
           <Field label="Nom et prénom" value={socName} onChangeText={setSocName} placeholder="Ton nom public" />
-          <Field label="Date de naissance (Privée)" value={socBirthDate} onChangeText={setSocBirthDate} placeholder="JJ/MM/AAAA" />
+          <Field 
+            label="Date de naissance (Privée)" 
+            value={socBirthDate} 
+            onChangeText={v => setSocBirthDate(formatDateInput(v))} 
+            placeholder="JJ/MM/AAAA" 
+            keyboardType="number-pad" 
+            maxLength={10}
+          />
           <Field label="Email ou Téléphone" value={socContact} onChangeText={setSocContact} placeholder="Pour récupérer ton compte" />
           <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} secureTextEntry />
           
@@ -236,22 +262,17 @@ export default function App() {
             <Text style={styles.greeting}>Messagerie</Text>
             <Text style={styles.homeName}>{messagingAccount?.name}</Text>
           </View>
-          <TouchableOpacity style={styles.switchButton} onPress={() => go('home_social')}>
-            <Text style={styles.switchText}>🌍 Passer au Social</Text>
+          <TouchableOpacity style={styles.switchButton} onPress={switchSpace}>
+            <Text style={styles.switchText}>🌍 Aller au Social</Text>
           </TouchableOpacity>
         </View>
         
         <ScrollView contentContainerStyle={styles.homeContent}>
           <Text style={styles.sectionTitle}>Tes conversations</Text>
-          {starterChats.map(chat => (
-            <View key={chat.id} style={styles.chatRow}>
-              <View style={styles.chatAvatar}><Text style={styles.chatAvatarText}>{chat.name.charAt(0)}</Text></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.chatName}>{chat.name}</Text>
-                <Text style={styles.chatLast}>{chat.last}</Text>
-              </View>
-            </View>
-          ))}
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>Aucun message</Text>
+            <Text style={styles.bodyCenter}>Commence une conversation.</Text>
+          </View>
         </ScrollView>
       </SafeAreaView>
     );
@@ -266,8 +287,8 @@ export default function App() {
             <Text style={styles.greeting}>Réseau Social</Text>
             <Text style={styles.homeName}>{socialAccount?.name}</Text>
           </View>
-          <TouchableOpacity style={styles.switchButton} onPress={() => go('home_messaging')}>
-            <Text style={styles.switchText}>💬 Passer à la Messagerie</Text>
+          <TouchableOpacity style={styles.switchButton} onPress={switchSpace}>
+            <Text style={styles.switchText}>💬 Aller à la Messagerie</Text>
           </TouchableOpacity>
         </View>
 
@@ -279,7 +300,7 @@ export default function App() {
               style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12 }]} 
               multiline 
             />
-            <Button title="Publier" onPress={() => setNotice('Publication envoyée (simulation) !')} />
+            <Button title="Publier" onPress={() => setNotice('Publication envoyée !')} />
           </View>
           
           <Text style={styles.sectionTitle}>Le Feed</Text>
@@ -338,14 +359,13 @@ const styles = StyleSheet.create({
   scanIcon: { fontSize: 50, marginBottom: 10 },
   scanText: { color: '#28684F', fontSize: 15, fontWeight: '700', textAlign: 'center' },
 
-  chatRow: { backgroundColor: C.white, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#EAF0EC' },
-  chatAvatar: { width: 50, height: 50, borderRadius: 18, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  chatAvatarText: { color: C.green, fontSize: 21, fontWeight: '900' },
-  chatName: { color: C.dark, fontSize: 16, fontWeight: '800', marginBottom: 5 },
-  chatLast: { color: C.muted, fontSize: 13 },
-
   postCard: { backgroundColor: C.white, borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#EAF0EC' },
   postAuthor: { color: C.green, fontSize: 15, fontWeight: '800', marginBottom: 8 },
   postText: { color: C.dark, fontSize: 15, lineHeight: 22 },
   postTime: { color: C.muted, fontSize: 11, marginTop: 8, textAlign: 'right' },
+
+  errorText: { color: C.red, fontSize: 13, textAlign: 'center', marginBottom: 10, fontWeight: '600' },
+  emptyBox: { backgroundColor: C.white, borderRadius: 18, padding: 22, marginTop: 12, alignItems: 'center' },
+  emptyTitle: { color: C.dark, fontSize: 17, fontWeight: '800', marginBottom: 5 },
+  bodyCenter: { color: C.muted, fontSize: 15, lineHeight: 24, textAlign: 'center' },
 });
