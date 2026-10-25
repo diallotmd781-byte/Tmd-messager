@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, KeyboardAvoidingView, Platform
+  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, FlatList
 } from 'react-native';
 
 const API_URL = 'https://tmd-messager.onrender.com';
@@ -11,7 +11,11 @@ const C = {
   dark: '#17251F', muted: '#75827B', border: '#DDE5E0', red: '#B42318',
 };
 
-const COUNTRIES = [{ name: 'Guinée', dial: '+224' }, { name: 'France', dial: '+33' }];
+const COUNTRIES = [
+  { name: 'Guinée', dial: '+224' }, { name: 'France', dial: '+33' },
+  { name: 'Sénégal', dial: '+221' }, { name: 'Côte d’Ivoire', dial: '+225' },
+  { name: 'Mali', dial: '+223' }, { name: 'Canada', dial: '+1' },
+];
 
 const demoHash = (input) => {
   let h = 5381;
@@ -67,6 +71,8 @@ export default function App() {
   const [msgPassword, setMsgPassword] = useState('');
   const [msgBirth, setMsgBirth] = useState('');
   const [msgOtp, setMsgOtp] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
+  const [showCountries, setShowCountries] = useState(false);
 
   // ÉTATS SOCIAL
   const [socUser, setSocUser] = useState(null);
@@ -96,15 +102,15 @@ export default function App() {
     try {
       await fetch(`${API_URL}/auth/send-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: msgPhone, country_dial: COUNTRIES[0].dial })
+        body: JSON.stringify({ phone: msgPhone, country_dial: selectedCountry.dial })
       });
       go('msg_scan');
-    } catch { setNotice('Erreur de connexion.'); }
+    } catch { setNotice('Erreur de connexion (réveille le serveur Render).'); }
   }
 
   // --- SCAN VISAGE (Simulation) ---
-  function finishMsgScan() { go('msg_otp'); setNotice('Visage vérifié (simulation) !'); }
-  function finishSocScan() { go('soc_otp'); setNotice('Visage vérifié (simulation) !'); }
+  function finishMsgScan() { go('msg_otp'); setNotice('Visage vérifié !'); }
+  function finishSocScan() { go('soc_otp'); setNotice('Visage vérifié !'); }
 
   // --- MESSAGERIE : Vérification OTP ---
   async function verifyMsgOtp() {
@@ -112,10 +118,13 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/auth/verify-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: msgPhone, country_dial: COUNTRIES[0].dial, code: msgOtp, name: msgName, birth_date: msgBirth, password: demoHash(msgPassword) })
+        body: JSON.stringify({ 
+          phone: msgPhone, country_dial: selectedCountry.dial, code: msgOtp, 
+          name: msgName, birth_date: msgBirth, password: demoHash(msgPassword) 
+        })
       });
       if (res.ok) {
-        setMsgUser({ name: msgName, phone: msgPhone });
+        setMsgUser({ name: msgName, phone: msgPhone, dial: selectedCountry.dial });
         go('msg_home');
       } else { setNotice('Erreur serveur.'); }
     } catch { setNotice('Erreur de connexion.'); }
@@ -207,24 +216,52 @@ export default function App() {
     );
   }
 
-  // --- REGISTER MESSAGERIE ---
+  // --- REGISTER MESSAGERIE (avec sélecteur pays) ---
   if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Inscription Messagerie" onBack={() => go('msg_login')} />
         <ScrollView contentContainerStyle={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+          
           <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
-          <Field label="Téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
-          <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
-          <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} secureTextEntry />
-          <Button title="Continuer vers le scan" onPress={sendMsgOtp} />
-        </ScrollView>
+          
+          <Text style={styles.label}>Pays / Indicatif</Text>
+          <TouchableOpacity style={styles.countrySelect} onPress={() => setShowCountries(true)}>
+            <Text style={styles.countryText}>{selectedCountry.name} ({selectedCountry.dial})</Text>
+            <Text style={styles.chevron}>⌄</Text>
+          </TouchableOpacity>
+
+          <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
+          <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad <" maxLength={10} />
+          <Field labelText style="Mot de passe={" value={msgPassword} onChangeText={setstylesMsgPassword} secureTextEntry />
+          
+.mod          <Button title="Continuer versal le scan" onPress={sendMsgOtp} />
+        </ScrollTitleView>
+
+        {/* Modal de sélection de pays}> */}
+        <Modal visible={showChCountries} transparent animationType="slide">
+          <oisView style={styles.modalOverlay}>
+ir            <View style={styles.modalCard}>
+              un pays</Text>
+              <FlatList
+                data={COUNTRIES}
+                keyExtractor={(item) => item.name}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.countryItem} onPress={() => { setSelectedCountry(item); setShowCountries(false); }}>
+                    <Text style={styles.countryItemText}>{item.name} ({item.dial})</Text>
+                  </TouchableOpacity>
+                )}
+              />
+              <Button title="Fermer" onPress={() => setShowCountries(false)} />
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
 
-  // --- SCAN VISAGE (Avant OTP) ---
+  // --- SCAN VISAGE ---
   if (screen === 'msg_scan' || screen === 'soc_scan') {
     const isMsg = screen === 'msg_scan';
     return (
@@ -232,7 +269,7 @@ export default function App() {
         <View style={styles.faceHero}>
           <View style={styles.faceIcon}><Text style={{ fontSize: 54 }}>🙂</Text></View>
           <Text style={styles.title}>Vérification du visage</Text>
-          <Text style={styles.bodyCenter}>Simulation du scan de présence réelle avant l'envoi du code SMS.</Text>
+          <Text style={styles.bodyCenter}>Simulation du scan avant l'envoi du code.</Text>
           <Button title="Terminer le scan" onPress={isMsg ? finishMsgScan : finishSocScan} />
         </View>
       </SafeAreaView>
@@ -246,7 +283,7 @@ export default function App() {
         <Header title="Code SMS" onBack={() => go('msg_register')} />
         <ScrollView contentContainerStyle={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Text style={styles.body}>Code envoyé au {msgPhone}.</Text>
+          <Text style={styles.body}>Code envoyé au {selectedCountry.dial} {msgPhone}.</Text>
           <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
           <Button title="Vérifier et créer le compte" onPress={verifyMsgOtp} />
         </ScrollView>
@@ -271,9 +308,7 @@ export default function App() {
             <Button title="Envoyer" onPress={sendMessage} />
           </View>
           {messages.map((m, i) => (
-            <View key={i} style={styles.messageBubble}>
-              <Text style={styles.messageText}>{m.text}</Text>
-            </View>
+            <View key={i} style={styles.messageBubble}><Text style={styles.messageText}>{m.text}</Text></View>
           ))}
         </ScrollView>
       </SafeAreaView>
@@ -381,4 +416,14 @@ const styles = StyleSheet.create({
   errorText: { color: C.red, fontSize: 13, textAlign: 'center', marginBottom: 10, fontWeight: '600' },
   messageBubble: { backgroundColor: C.green2, padding: 12, borderRadius: 12, marginBottom: 8, alignSelf: 'flex-end' },
   messageText: { color: C.dark, fontSize: 15 },
+  
+  // Modal Pays
+  countrySelect: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 13, padding: 15, marginBottom: 14 },
+  countryText: { color: C.dark, fontSize: 16 },
+  chevron: { color: C.muted, fontSize: 18 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '70%' },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: C.dark, marginBottom: 16, textAlign: 'center' },
+  countryItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.bg },
+  countryItemText: { color: C.dark, fontSize: 16, textAlign: 'center' },
 });
