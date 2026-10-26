@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
+  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const STORAGE_KEY = '@tmd_messenger_v5';
+// ⚠️ VÉRIFIE BIEN CETTE URL ! Ouvre-la dans ton navigateur pour voir si elle affiche {"status":"ok"}
 const API_URL = 'https://tmd-messager.onrender.com';
 
 const C = {
@@ -29,8 +28,6 @@ const COUNTRIES = [
   { name: 'Congo', dial: '+242', flag: '🇨🇬' }, { name: 'RDC', dial: '+243', flag: '🇨🇩' },
   { name: 'Algérie', dial: '+213', flag: '🇩🇿' }, { name: 'Tunisie', dial: '+216', flag: '🇹🇳' },
   { name: 'Égypte', dial: '+20', flag: '🇪🇬' }, { name: 'Afrique du Sud', dial: '+27', flag: '🇿🇦' },
-  { name: 'Turquie', dial: '+90', flag: '🇹🇷' }, { name: 'Arabie saoudite', dial: '+966', flag: '🇸🇦' },
-  { name: 'Chine', dial: '+86', flag: '🇨🇳' }, { name: 'Inde', dial: '+91', flag: '🇮🇳' },
 ].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 
 const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -50,33 +47,51 @@ const formatDateInput = (value) => {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 };
 
-function Button({ title, onPress, secondary = false, danger = false }) {
+// --- COMPOSANT CHAMP DE TEXTE AVEC L'ŒIL POUR LE MOT DE PASSE ---
+function Field({ label, value, onChangeText, placeholder, isPassword = false, keyboardType = 'default', maxLength, autoCapitalize = 'none' }) {
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <View style={styles.fieldWrap}>
+      {!!label && <Text style={styles.label}>{label}</Text>}
+      <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0 }]}>
+        <TextInput 
+          value={value} 
+          onChangeText={onChangeText} 
+          placeholder={placeholder}
+          placeholderTextColor="#9AA59F" 
+          secureTextEntry={isPassword && !showPassword}
+          keyboardType={keyboardType} 
+          maxLength={maxLength} 
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false} 
+          style={{ flex: 1, paddingHorizontal: 14, color: C.dark, fontSize: 16, height: '100%' }} 
+        />
+        {isPassword && (
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 14 }}>
+            <Text style={{ fontSize: 20 }}>{showPassword ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function Button({ title, onPress, secondary = false }) {
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress}
-      style={[styles.button, secondary && styles.buttonSecondary, danger && styles.buttonDanger]}>
+      style={[styles.button, secondary && styles.buttonSecondary]}>
       <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{title}</Text>
     </TouchableOpacity>
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry = false, keyboardType = 'default', maxLength, autoCapitalize = 'none' }) {
-  return (
-    <View style={styles.fieldWrap}>
-      {!!label && <Text style={styles.label}>{label}</Text>}
-      <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder}
-        placeholderTextColor="#9AA59F" secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType} maxLength={maxLength} autoCapitalize={autoCapitalize}
-        autoCorrect={false} style={styles.input} />
-    </View>
-  );
-}
-
-function Header({ title, onBack, right }) {
+function Header({ title, onBack }) {
   return (
     <View style={styles.header}>
       <TouchableOpacity onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
       <Text style={styles.headerTitle}>{title}</Text>
-      {right || <View style={{ width: 35 }} />}
+      <View style={{ width: 35 }} />
     </View>
   );
 }
@@ -84,6 +99,7 @@ function Header({ title, onBack, right }) {
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [notice, setNotice] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   
   // --- ÉTATS MESSAGERIE ---
   const [account, setAccount] = useState(null);
@@ -100,6 +116,10 @@ export default function App() {
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
   const [showCountries, setShowCountries] = useState(false);
 
+  // --- ÉTATS CHAT ---
+  const [newMessageText, setNewMessageText] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+
   // --- ÉTATS SOCIAL ---
   const [socialAccount, setSocialAccount] = useState(null);
   const [socAvatar, setSocAvatar] = useState('🌍');
@@ -107,17 +127,12 @@ export default function App() {
   const [socContact, setSocContact] = useState('');
   const [socPassword, setSocPassword] = useState('');
 
-  // --- ÉTATS CHAT ---
-  const [newMessageText, setNewMessageText] = useState('');
-  const [recipientPhone, setRecipientPhone] = useState('');
-
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 3500);
+    const timer = setTimeout(() => setNotice(''), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // Charger l'historique à l'arrivée sur l'accueil
   useEffect(() => {
     if (screen === 'msg_home' && account) {
       loadChats();
@@ -126,99 +141,73 @@ export default function App() {
 
   function go(next) { Keyboard.dismiss(); setNotice(''); setScreen(next); }
 
-  // --- FONCTIONS MESSAGERIE ---
+  // --- FONCTIONS RÉSEAU ---
   async function loadChats() {
     try {
       const res = await fetch(`${API_URL}/messages/chats/${normalizePhone(account.phone)}`);
-      if (!res.ok) throw new Error("Erreur serveur");
+      if (!res.ok) return;
       const data = await res.json();
       
       const grouped = {};
       data.forEach(msg => {
         const key = msg.other_phone;
         if (!grouped[key]) {
-          grouped[key] = {
-            id: key,
-            name: msg.other_name,
-            phone: key,
-            avatar: msg.other_avatar,
-            messages: []
-          };
+          grouped[key] = { id: key, name: msg.other_name, phone: key, avatar: msg.other_avatar, messages: [] };
         }
-        grouped[key].messages.push({
-          id: msg.id.toString(),
-          text: msg.text,
-          mine: msg.mine,
-          time: msg.time
-        });
+        grouped[key].messages.push({ id: msg.id.toString(), text: msg.text, mine: msg.mine, time: msg.time });
       });
-
       setChats(Object.values(grouped));
     } catch (err) {
-      console.log("Erreur chargement chats", err);
+      console.log("Erreur chargement chats:", err);
     }
   }
 
   async function sendMsgOtp() {
     if (!msgName.trim() || normalizePhone(msgPhone).length < 5) return setNotice('Remplis ton nom et ton numéro.');
-    setNotice('Envoi du code...');
+    setNotice('Connexion au serveur (peut prendre 50s si endormi)...');
+    setIsLoading(true);
+    
     try {
-      await fetch(`${API_URL}/auth/send-otp`, {
+      const res = await fetch(`${API_URL}/auth/send-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial })
       });
+      
+      if (!res.ok) throw new Error(`Erreur serveur (${res.status})`);
+      
+      setNotice('Code envoyé !');
       go('msg_otp');
-    } catch { setNotice('Erreur de connexion.'); }
+    } catch (err) {
+      console.log("Erreur fetch:", err);
+      setNotice(`Échec : ${err.message}. Vérifie l'URL Render.`);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function verifyMsgOtp() {
     if (msgOtp !== '123456') return setNotice('Code incorrect (utilise 123456).');
+    setIsLoading(true);
     try {
-      await fetch(`${API_URL}/auth/verify-otp`, {
+      const res = await fetch(`${API_URL}/auth/verify-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          phone: normalizePhone(msgPhone), 
-          country_dial: selectedCountry.dial, 
-          code: msgOtp,
-          name: msgName, 
-          birth_date: msgBirth, 
-          password: demoHash(msgPassword),
-          avatar: msgAvatar // On envoie l'avatar maintenant
+          phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial, code: msgOtp,
+          name: msgName, birth_date: msgBirth, password: demoHash(msgPassword), avatar: msgAvatar 
         })
       });
+
+      if (!res.ok) throw new Error("Erreur d'inscription");
+
       setAccount({ name: msgName, phone: normalizePhone(msgPhone), dial: selectedCountry.dial, avatar: msgAvatar });
       go('msg_home');
-    } catch { setNotice('Erreur serveur.'); }
+    } catch (err) {
+      setNotice("Impossible de valider le code.");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  // Envoyer un message depuis l'écran d'accueil (nouveau destinataire)
-  async function sendMessageFromHome() {
-    if (!newMessageText.trim() || !recipientPhone.trim()) return setNotice('Remplis le message et le destinataire.');
-    const text = newMessageText.trim();
-    const phone = normalizePhone(recipientPhone);
-    
-    const newMsg = { id: makeId(), text, mine: true, time: nowTime() };
-    setChats(prev => {
-      const existing = prev.find(c => normalizePhone(c.phone) === phone);
-      if (existing) {
-        return prev.map(c => normalizePhone(c.phone) === phone ? { ...c, messages: [...c.messages, newMsg] } : c);
-      } else {
-        return [{ id: phone, name: phone, phone: phone, avatar: '👤', messages: [newMsg] }, ...prev];
-      }
-    });
-    setNewMessageText('');
-    setRecipientPhone('');
-
-    try {
-      await fetch(`${API_URL}/messages/send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender_phone: normalizePhone(account.phone), recipient_phone: phone, text })
-      });
-      setNotice('Message envoyé !');
-    } catch { setNotice('Message local (serveur injoignable).'); }
-  }
-
-  // Envoyer un message depuis l'écran de chat
   async function sendMessageToChat(recipient) {
     if (!newMessageText.trim()) return;
     const text = newMessageText.trim();
@@ -230,18 +219,37 @@ export default function App() {
     try {
       await fetch(`${API_URL}/messages/send`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          sender_phone: normalizePhone(account.phone), 
-          recipient_phone: normalizePhone(recipient), 
-          text 
-        })
+        body: JSON.stringify({ sender_phone: normalizePhone(account.phone), recipient_phone: normalizePhone(recipient), text })
       });
     } catch { 
-      setNotice('Message non envoyé. Vérifie ta connexion.'); 
+      setNotice('Message local seulement (serveur injoignable).'); 
     }
   }
 
-  // --- FONCTIONS SOCIAL ---
+  async function sendMessageFromHome() {
+    if (!newMessageText.trim() || !recipientPhone.trim()) return setNotice('Remplis le message et le destinataire.');
+    const text = newMessageText.trim();
+    const phone = normalizePhone(recipientPhone);
+    
+    const newMsg = { id: makeId(), text, mine: true, time: nowTime() };
+    setChats(prev => {
+      const existing = prev.find(c => normalizePhone(c.phone) === phone);
+      if (existing) {
+        return prev.map(c => normalizePhone(c.phone) === phone ? { ...c, messages: [...c.messages, newMsg] } : c);
+      }
+      return [{ id: phone, name: phone, phone: phone, avatar: '👤', messages: [newMsg] }, ...prev];
+    });
+    setNewMessageText('');
+    setRecipientPhone('');
+
+    try {
+      await fetch(`${API_URL}/messages/send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender_phone: normalizePhone(account.phone), recipient_phone: phone, text })
+      });
+    } catch { setNotice('Message local (serveur injoignable).'); }
+  }
+
   function registerSocial() {
     if (!socName.trim() || !socContact.trim()) return setNotice('Remplis ton nom et ton contact.');
     setSocialAccount({ name: socName, contact: socContact, avatar: socAvatar });
@@ -283,7 +291,6 @@ export default function App() {
     );
   }
 
-  // --- MESSAGERIE ---
   if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -291,8 +298,12 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
 
-          <Text style={styles.label}>Choisis un avatar</Text>
+          <Text style={styles.label}>Photo de profil (Optionnel)</Text>
           <View style={styles.avatarRow}>
+            {/* Option "Aucun" (Rien) */}
+            <TouchableOpacity style={[styles.avatarOption, msgAvatar === '' && styles.avatarOptionSelected]} onPress={() => setMsgAvatar('')}>
+              <Text style={{ fontSize: 12, color: C.muted }}>Aucun</Text>
+            </TouchableOpacity>
             {['👤', '😎', '👩', '🧑', '👨', '🦁', '🐼', '🌟'].map(a => (
               <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}>
                 <Text style={styles.avatarOptionText}>{a}</Text>
@@ -310,9 +321,11 @@ export default function App() {
 
           <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
           <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
-          <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} secureTextEntry />
           
-          <Button title="Continuer" onPress={sendMsgOtp} />
+          {/* Mot de passe avec l'œil */}
+          <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} isPassword={true} />
+          
+          <Button title={isLoading ? "Connexion..." : "Continuer"} onPress={sendMsgOtp} />
         </ScrollView>
 
         <Modal visible={showCountries} transparent animationType="slide">
@@ -344,7 +357,7 @@ export default function App() {
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
           <Text style={styles.body}>Code envoyé au {selectedCountry.dial} {msgPhone}.</Text>
           <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
-          <Button title="Vérifier" onPress={verifyMsgOtp} />
+          <Button title={isLoading ? "Vérification..." : "Vérifier"} onPress={verifyMsgOtp} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -356,7 +369,9 @@ export default function App() {
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
         <View style={styles.homeHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={styles.avatarSmall}><Text style={styles.avatarSmallText}>{account?.avatar}</Text></View>
+            <View style={styles.avatarSmall}>
+              <Text style={styles.avatarSmallText}>{account?.avatar || '👤'}</Text>
+            </View>
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.greeting}>Messagerie</Text>
               <Text style={styles.homeName}>{account?.name}</Text>
@@ -377,17 +392,11 @@ export default function App() {
             <Text style={styles.bodyCenter}>Aucune discussion pour le moment.</Text>
           ) : (
             chats.map(chat => (
-              <TouchableOpacity 
-                key={chat.id} 
-                style={styles.chatRow}
-                onPress={() => { setActiveChatId(chat.id); go('msg_chat'); }}
-              >
+              <TouchableOpacity key={chat.id} style={styles.chatRow} onPress={() => { setActiveChatId(chat.id); go('msg_chat'); }}>
                 <View style={styles.chatAvatar}><Text style={styles.chatAvatarText}>{chat.avatar || '👤'}</Text></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.chatName}>{chat.name}</Text>
-                  <Text style={styles.chatLast} numberOfLines={1}>
-                    {chat.messages[chat.messages.length - 1]?.text || 'Nouveau'}
-                  </Text>
+                  <Text style={styles.chatLast} numberOfLines={1}>{chat.messages[chat.messages.length - 1]?.text || 'Nouveau'}</Text>
                 </View>
               </TouchableOpacity>
             ))
@@ -397,7 +406,6 @@ export default function App() {
     );
   }
 
-  // --- ÉCRAN DE CHAT ---
   if (screen === 'msg_chat') {
     const chat = chats.find(c => c.id === activeChatId);
     if (!chat) return null;
@@ -405,10 +413,7 @@ export default function App() {
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={styles.safe}>
-          <Header 
-            title={chat.name} 
-            onBack={() => go('msg_home')} 
-          />
+          <Header title={chat.name} onBack={() => go('msg_home')} />
           <ScrollView contentContainerStyle={{ padding: 20 }}>
             {chat.messages.map(m => (
               <View key={m.id} style={{ 
@@ -426,14 +431,9 @@ export default function App() {
           <View style={{ flexDirection: 'row', padding: 14, backgroundColor: C.white, borderTopWidth: 1, borderTopColor: C.border }}>
             <TextInput 
               style={[styles.input, { flex: 1, marginRight: 10, minHeight: 45 }]} 
-              placeholder="Écris un message..." 
-              value={newMessageText}
-              onChangeText={setNewMessageText}
+              placeholder="Écris un message..." value={newMessageText} onChangeText={setNewMessageText}
             />
-            <TouchableOpacity 
-              style={{ backgroundColor: C.green, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 13 }}
-              onPress={() => sendMessageToChat(chat.phone)}
-            >
+            <TouchableOpacity style={{ backgroundColor: C.green, justifyContent: 'center', paddingHorizontal: 20, borderRadius: 13 }} onPress={() => sendMessageToChat(chat.phone)}>
               <Text style={{ color: C.white, fontWeight: '800' }}>Envoyer</Text>
             </TouchableOpacity>
           </View>
@@ -442,7 +442,6 @@ export default function App() {
     );
   }
 
-  // --- SOCIAL ---
   if (screen === 'soc_register') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -452,6 +451,9 @@ export default function App() {
 
           <Text style={styles.label}>Choisis un avatar</Text>
           <View style={styles.avatarRow}>
+            <TouchableOpacity style={[styles.avatarOption, socAvatar === '' && styles.avatarOptionSelected]} onPress={() => setSocAvatar('')}>
+              <Text style={{ fontSize: 12, color: C.muted }}>Aucun</Text>
+            </TouchableOpacity>
             {['🌍', '🦄', '🐯', '🎨', '🎧', '🚀', '🔥', '🌈'].map(a => (
               <TouchableOpacity key={a} style={[styles.avatarOption, socAvatar === a && styles.avatarOptionSelected]} onPress={() => setSocAvatar(a)}>
                 <Text style={styles.avatarOptionText}>{a}</Text>
@@ -461,7 +463,9 @@ export default function App() {
 
           <Field label="Nom et prénom" value={socName} onChangeText={setSocName} placeholder="Ton nom public" />
           <Field label="Email ou Téléphone" value={socContact} onChangeText={setSocContact} placeholder="Contact" />
-          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} secureTextEntry />
+          
+          {/* Mot de passe avec l'œil */}
+          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} isPassword={true} />
           
           <Button title="Créer mon compte Social" onPress={registerSocial} />
         </ScrollView>
@@ -474,7 +478,9 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.homeHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.avatarSmall, { backgroundColor: C.blue }]}><Text style={styles.avatarSmallText}>{socialAccount?.avatar}</Text></View>
+            <View style={[styles.avatarSmall, { backgroundColor: C.blue }]}>
+              <Text style={styles.avatarSmallText}>{socialAccount?.avatar || '👤'}</Text>
+            </View>
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.greeting}>Réseau Social</Text>
               <Text style={styles.homeName}>{socialAccount?.name}</Text>
@@ -486,7 +492,7 @@ export default function App() {
         <ScrollView contentContainerStyle={styles.homeContent}>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Nouvelle publication</Text>
-            <TextInput placeholder="Quoi de neuf ?" style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12 }]} multiline />
+            <TextInput placeholder="Quoi de neuf ?" style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12, padding: 14 }]} multiline />
             <Button title="Publier" onPress={() => setNotice('Publication (bientôt) !')} />
           </View>
         </ScrollView>
@@ -519,7 +525,7 @@ const styles = StyleSheet.create({
 
   fieldWrap: { marginBottom: 14 },
   label: { color: C.dark, fontWeight: '700', fontSize: 15, marginBottom: 8, marginTop: 12 },
-  input: { minHeight: 52, borderWidth: 1, borderColor: C.border, backgroundColor: C.white, borderRadius: 13, paddingHorizontal: 14, color: C.dark, fontSize: 16 },
+  input: { minHeight: 52, borderWidth: 1, borderColor: C.border, backgroundColor: C.white, borderRadius: 13, color: C.dark, fontSize: 16, overflow: 'hidden' },
   
   button: { backgroundColor: C.green, borderRadius: 15, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   buttonText: { color: C.white, fontSize: 17, fontWeight: '800' },
@@ -528,7 +534,7 @@ const styles = StyleSheet.create({
 
   body: { color: C.muted, fontSize: 16, marginBottom: 12 },
   bodyCenter: { color: C.muted, fontSize: 15, textAlign: 'center', marginBottom: 18 },
-  errorText: { color: C.red, fontSize: 13, textAlign: 'center', marginBottom: 10, fontWeight: '600' },
+  errorText: { color: C.red, fontSize: 14, textAlign: 'center', marginBottom: 10, fontWeight: '700' },
 
   select: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 13, padding: 15, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between' },
   selectText: { color: C.dark, fontSize: 16 },
