@@ -1,46 +1,33 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
+  StyleSheet, StatusBar, Modal, FlatList, Image, ActivityIndicator
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 
-const STORAGE_KEY = '@tmd_messenger_v5';
 const API_URL = 'https://tmd-messager.onrender.com';
 
 const C = {
   bg: '#F4F7F5', white: '#FFFFFF', green: '#176B50', green2: '#E7F5EE',
   dark: '#17251F', muted: '#75827B', border: '#DDE5E0', red: '#B42318',
-  yellow: '#FFF0D6', blue: '#EAF2FF'
+  blue: '#EAF2FF', yellow: '#FFF0D6'
 };
 
 const COUNTRIES = [
   { name: 'Guinée', dial: '+224', flag: '🇬🇳' }, { name: 'France', dial: '+33', flag: '🇫🇷' },
   { name: 'Sénégal', dial: '+221', flag: '🇸🇳' }, { name: 'Côte d’Ivoire', dial: '+225', flag: '🇨🇮' },
   { name: 'Mali', dial: '+223', flag: '🇲🇱' }, { name: 'Canada', dial: '+1', flag: '🇨🇦' },
-  { name: 'États-Unis', dial: '+1', flag: '🇺🇸' }, { name: 'Royaume-Uni', dial: '+44', flag: '🇬🇧' },
-  { name: 'Belgique', dial: '+32', flag: '🇧🇪' }, { name: 'Allemagne', dial: '+49', flag: '🇩🇪' },
-  { name: 'Maroc', dial: '+212', flag: '🇲🇦' }, { name: 'Nigeria', dial: '+234', flag: '🇳🇬' },
-  { name: 'Cameroun', dial: '+237', flag: '🇨🇲' }, { name: 'Gambie', dial: '+220', flag: '🇬🇲' },
-  { name: 'Sierra Leone', dial: '+232', flag: '🇸🇱' }, { name: 'Liberia', dial: '+231', flag: '🇱🇷' },
-  { name: 'Ghana', dial: '+233', flag: '🇬🇭' }, { name: 'Burkina Faso', dial: '+226', flag: '🇧🇫' },
-  { name: 'Bénin', dial: '+229', flag: '🇧🇯' }, { name: 'Togo', dial: '+228', flag: '🇹🇬' },
-  { name: 'Niger', dial: '+227', flag: '🇳🇪' }, { name: 'Gabon', dial: '+241', flag: '🇬🇦' },
-  { name: 'Congo', dial: '+242', flag: '🇨🇬' }, { name: 'RDC', dial: '+243', flag: '🇨🇩' },
-  { name: 'Algérie', dial: '+213', flag: '🇩🇿' }, { name: 'Tunisie', dial: '+216', flag: '🇹🇳' },
-  { name: 'Égypte', dial: '+20', flag: '🇪🇬' }, { name: 'Afrique du Sud', dial: '+27', flag: '🇿🇦' },
-  { name: 'Turquie', dial: '+90', flag: '🇹🇷' }, { name: 'Arabie saoudite', dial: '+966', flag: '🇸🇦' },
-  { name: 'Chine', dial: '+86', flag: '🇨🇳' }, { name: 'Inde', dial: '+91', flag: '🇮🇳' },
-].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+];
 
-const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-const normalizePhone = value => String(value || '').replace(/[\s()-]/g, '');
-
-const demoHash = (input) => {
-  let h = 5381;
-  for (let i = 0; i < input.length; i++) h = (h * 33) ^ input.charCodeAt(i);
-  return (h >>> 0).toString(16);
+const isValidDate = (dateString) => {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(dateString)) return false;
+  const [day, month, year] = dateString.split('/').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return false;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) age--;
+  return age >= 13 && age <= 120;
 };
 
 const formatDateInput = (value) => {
@@ -50,33 +37,28 @@ const formatDateInput = (value) => {
   return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 };
 
-function Button({ title, onPress, secondary = false, danger = false }) {
+const demoHash = (input) => {
+  let h = 5381;
+  for (let i = 0; i < input.length; i++) h = (h * 33) ^ input.charCodeAt(i);
+  return (h >>> 0).toString(16);
+};
+
+function Button({ title, onPress, secondary = false, loading = false }) {
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress}
-      style={[styles.button, secondary && styles.buttonSecondary, danger && styles.buttonDanger]}>
-      <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{title}</Text>
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} disabled={loading} style={[styles.button, secondary && styles.buttonSecondary, loading && { opacity: 0.7 }]}>
+      {loading ? <ActivityIndicator color={secondary ? C.green : C.white} /> : <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{title}</Text>}
     </TouchableOpacity>
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, secureTextEntry = false, keyboardType = 'default', maxLength, autoCapitalize = 'none' }) {
+function Field({ label, value, onChangeText, placeholder, secureTextEntry = false, keyboardType = 'default', maxLength }) {
   return (
     <View style={styles.fieldWrap}>
       {!!label && <Text style={styles.label}>{label}</Text>}
       <TextInput value={value} onChangeText={onChangeText} placeholder={placeholder}
         placeholderTextColor="#9AA59F" secureTextEntry={secureTextEntry}
-        keyboardType={keyboardType} maxLength={maxLength} autoCapitalize={autoCapitalize}
+        keyboardType={keyboardType} maxLength={maxLength} autoCapitalize="none"
         autoCorrect={false} style={styles.input} />
-    </View>
-  );
-}
-
-function Header({ title, onBack, right }) {
-  return (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
-      <Text style={styles.headerTitle}>{title}</Text>
-      {right || <View style={{ width: 35 }} />}
     </View>
   );
 }
@@ -84,14 +66,11 @@ function Header({ title, onBack, right }) {
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [notice, setNotice] = useState('');
-  
-  // --- ÉTATS MESSAGERIE ---
-  const [account, setAccount] = useState(null);
-  const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
-  const [msgAvatar, setMsgAvatar] = useState('👤'); // Avatar Messagerie
+  const [loading, setLoading] = useState(false);
 
-  // Formulaire Messagerie
+  // MESSAGERIE
+  const [msgAccount, setMsgAccount] = useState(null);
+  const [msgPhoto, setMsgPhoto] = useState(null);
   const [msgName, setMsgName] = useState('');
   const [msgBirth, setMsgBirth] = useState('');
   const [msgPhone, setMsgPhone] = useState('');
@@ -99,94 +78,106 @@ export default function App() {
   const [msgOtp, setMsgOtp] = useState('');
   const [selectedCountry, setSelectedCountry] = useState(COUNTRIES[0]);
   const [showCountries, setShowCountries] = useState(false);
-
-  // --- ÉTATS SOCIAL ---
-  const [socialAccount, setSocialAccount] = useState(null);
-  const [socAvatar, setSocAvatar] = useState('🌍'); // Avatar Social
-  const [socName, setSocName] = useState('');
-  const [socContact, setSocContact] = useState('');
-  const [socPassword, setSocPassword] = useState('');
-
-  // --- ÉTATS CHAT ---
+  const [chats, setChats] = useState([]);
   const [newMessageText, setNewMessageText] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
 
+  // SOCIAL
+  const [socAccount, setSocAccount] = useState(null);
+  const [socPhoto, setSocPhoto] = useState(null);
+  const [socName, setSocName] = useState('');
+  const [socContact, setSocContact] = useState('');
+  const [socOtp, setSocOtp] = useState('');
+
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 3500);
+    const timer = setTimeout(() => setNotice(''), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  function go(next) { Keyboard.dismiss(); setNotice(''); setScreen(next); }
+  const go = (next) => { setNotice(''); setScreen(next); };
+
+  const pickImage = async (type) => {
+    let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 1 });
+    if (!result.canceled) {
+      if (type === 'msg') setMsgPhoto(result.assets[0].uri);
+      else setSocPhoto(result.assets[0].uri);
+    }
+  };
 
   // --- MESSAGERIE ---
-  async function sendMsgOtp() {
-    if (!msgName.trim() || normalizePhone(msgPhone).length < 5) return setNotice('Remplis ton nom et ton numéro.');
-    setNotice('Envoi du code...');
+  const registerMessaging = async () => {
+    if (!msgName.trim() || !msgPhone.trim()) return setNotice('Remplis ton nom et ton numéro.');
+    if (!isValidDate(msgBirth)) return setNotice('Date invalide (ex: 31/02 interdit).');
+    
+    setLoading(true);
+    setNotice('Connexion au serveur (patiente si Render dort)...');
     try {
       await fetch(`${API_URL}/auth/send-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial })
+        body: JSON.stringify({ phone: msgPhone.replace(/\D/g, ''), country_dial: selectedCountry.dial })
       });
       go('msg_otp');
-    } catch { setNotice('Erreur de connexion.'); }
-  }
+    } catch { setNotice('Erreur réseau.'); } finally { setLoading(false); }
+  };
 
-  async function verifyMsgOtp() {
+  const verifyMsgOtp = async () => {
     if (msgOtp !== '123456') return setNotice('Code incorrect (utilise 123456).');
+    setLoading(true);
     try {
       await fetch(`${API_URL}/auth/verify-otp`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial, code: msgOtp,
-          name: msgName, birth_date: msgBirth, password: demoHash(msgPassword) 
-        })
+        body: JSON.stringify({ phone: msgPhone.replace(/\D/g, ''), country_dial: selectedCountry.dial, code: msgOtp, name: msgName, birth_date: msgBirth, password: demoHash(msgPassword), avatar: msgPhoto })
       });
-      setAccount({ name: msgName, phone: normalizePhone(msgPhone), dial: selectedCountry.dial, avatar: msgAvatar });
+      setMsgAccount({ name: msgName, phone: msgPhone, avatar: msgPhoto });
       go('msg_home');
-    } catch { setNotice('Erreur serveur.'); }
-  }
+    } catch { setNotice('Erreur réseau.'); } finally { setLoading(false); }
+  };
 
-  async function sendMessage() {
+  const sendMessage = async () => {
     if (!newMessageText.trim() || !recipientPhone.trim()) return setNotice('Remplis le message et le destinataire.');
     const text = newMessageText.trim();
+    setLoading(true);
     
-    // Simulation d'ajout local
-    const newMsg = { id: makeId(), text, mine: true, time: nowTime() };
+    // Ajout local immédiat pour l'interface
+    const newMsg = { id: Date.now().toString(), text, mine: true, time: new Date().toLocaleTimeString() };
     setChats(prev => {
-      const existing = prev.find(c => normalizePhone(c.phone) === normalizePhone(recipientPhone));
-      if (existing) {
-        return prev.map(c => c.phone === recipientPhone ? { ...c, messages: [...c.messages, newMsg] } : c);
-      } else {
-        return [{ id: makeId(), name: recipientPhone, phone: recipientPhone, messages: [newMsg] }, ...prev];
-      }
+      const existing = prev.find(c => c.phone === recipientPhone);
+      if (existing) return prev.map(c => c.phone === recipientPhone ? { ...c, messages: [...c.messages, newMsg] } : c);
+      return [{ id: Date.now().toString(), name: recipientPhone, phone: recipientPhone, messages: [newMsg] }, ...prev];
     });
     setNewMessageText('');
 
     try {
-      await fetch(`${API_URL}/messages/send`, {
+      const res = await fetch(`${API_URL}/messages/send`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender_phone: normalizePhone(account.phone), recipient_phone: normalizePhone(recipientPhone), text })
+        body: JSON.stringify({ sender_phone: msgPhone.replace(/\D/g, ''), recipient_phone: recipientPhone.replace(/\D/g, ''), text })
       });
-      setNotice('Message envoyé au serveur !');
-    } catch { setNotice('Message local (serveur injoignable).'); }
-  }
+      if (res.ok) setNotice('Message envoyé sur le serveur !');
+      else setNotice('Message local (destinataire introuvable).');
+    } catch { setNotice('Message local (serveur injoignable).'); } finally { setLoading(false); }
+  };
 
   // --- SOCIAL ---
-  function registerSocial() {
-    if (!socName.trim() || !socContact.trim()) return setNotice('Remplis ton nom et ton contact.');
-    setSocialAccount({ name: socName, contact: socContact, avatar: socAvatar });
-    go('soc_home');
-  }
+  const registerSocial = async () => {
+    if (!socName.trim() || !socContact.trim()) return setNotice('Remplis tes infos.');
+    setLoading(true);
+    try {
+      await fetch(`${API_URL}/social/register`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contact: socContact, name: socName, birth_date: '01/01/2000', password: 'demo', avatar: socPhoto })
+      });
+      setSocAccount({ name: socName, contact: socContact, avatar: socPhoto });
+      go('soc_home');
+    } catch { setNotice('Erreur réseau.'); } finally { setLoading(false); }
+  };
 
-  // --- PASSERELLE ---
-  function toSocial() { socialAccount ? go('soc_home') : go('soc_register'); }
-  function toMessaging() { account ? go('msg_home') : go('msg_register'); }
+  const toSocial = () => socAccount ? go('soc_home') : go('soc_register');
+  const toMessaging = () => msgAccount ? go('msg_home') : go('msg_register');
 
   // =========================================================
-  // ÉCRANS
+  // RENDU
   // =========================================================
-
   if (screen === 'welcome') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -195,72 +186,52 @@ export default function App() {
           <Text style={styles.brand}>TMD Messenger</Text>
           <Text style={styles.subtitle}>Choisis ton espace.</Text>
         </View>
-        <View style={styles.welcomeCard}>
+        <View style={{ padding: 20 }}>
           <TouchableOpacity style={styles.bigButton} onPress={() => go('msg_register')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Messagerie</Text>
-              <Text style={styles.bigButtonSubtitle}>Discussions privées</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Messagerie</Text><Text style={styles.bigButtonSubtitle}>Privé</Text></View>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={toSocial}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Réseau Social</Text>
-              <Text style={styles.bigButtonSubtitle}>Partage public</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Réseau Social</Text><Text style={styles.bigButtonSubtitle}>Public</Text></View>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // --- MESSAGERIE ---
   if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Messagerie" onBack={() => go('welcome')} />
         <ScrollView contentContainerStyle={styles.page}>
+          <TouchableOpacity onPress={() => go('welcome')}><Text style={styles.backText}>‹ Retour</Text></TouchableOpacity>
+          <Text style={styles.title}>Compte Messagerie</Text>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
 
-          <Text style={styles.label}>Choisis un avatar</Text>
-          <View style={styles.avatarRow}>
-            {['👤', '😎', '👩', '🧑', '👨', '🦁', '🐼', '🌟'].map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}>
-                <Text style={styles.avatarOptionText}>{a}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity style={styles.photoPicker} onPress={() => pickImage('msg')}>
+            {msgPhoto ? <Image source={{ uri: msgPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoPickerText}>📷 Photo (optionnel)</Text>}
+          </TouchableOpacity>
 
           <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
-          
           <Text style={styles.label}>Pays</Text>
           <TouchableOpacity style={styles.select} onPress={() => setShowCountries(true)}>
             <Text style={styles.selectText}>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dial})</Text>
-            <Text style={styles.chevron}>⌄</Text>
           </TouchableOpacity>
-
-          <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
+          <Field label="Téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
           <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
           <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} secureTextEntry />
           
-          <Button title="Continuer" onPress={sendMsgOtp} />
+          <Button title="Continuer" onPress={registerMessaging} loading={loading} />
         </ScrollView>
 
         <Modal visible={showCountries} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Choisir un pays</Text>
-              <FlatList
-                data={COUNTRIES}
-                keyExtractor={(i) => i.name}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.countryItem} onPress={() => { setSelectedCountry(item); setShowCountries(false); }}>
-                    <Text style={styles.countryItemText}>{item.flag} {item.name} ({item.dial})</Text>
-                  </TouchableOpacity>
-                )}
-              />
-              <Button title="Fermer" secondary onPress={() => setShowCountries(false)} />
+              <FlatList data={COUNTRIES} keyExtractor={(i) => i.name} renderItem={({ item }) => (
+                <TouchableOpacity style={styles.countryItem} onPress={() => { setSelectedCountry(item); setShowCountries(false); }}>
+                  <Text style={styles.countryItemText}>{item.flag} {item.name} ({item.dial})</Text>
+                </TouchableOpacity>
+              )} />
             </View>
           </View>
         </Modal>
@@ -271,12 +242,13 @@ export default function App() {
   if (screen === 'msg_otp') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Code SMS" onBack={() => go('msg_register')} />
         <ScrollView contentContainerStyle={styles.page}>
+          <TouchableOpacity onPress={() => go('msg_register')}><Text style={styles.backText}>‹ Retour</Text></TouchableOpacity>
+          <Text style={styles.title}>Code SMS</Text>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
           <Text style={styles.body}>Code envoyé au {selectedCountry.dial} {msgPhone}.</Text>
-          <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
-          <Button title="Vérifier" onPress={verifyMsgOtp} />
+          <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} keyboardType="number-pad" maxLength={6} />
+          <Button title="Vérifier" onPress={verifyMsgOtp} loading={loading} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -286,65 +258,53 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-        <View style={styles.homeHeader}>
+        <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={styles.avatarSmall}><Text style={styles.avatarSmallText}>{account?.avatar}</Text></View>
+            {msgAccount?.avatar ? <Image source={{ uri: msgAccount.avatar }} style={styles.avatarImg} /> : <View style={styles.avatar}><Text>👤</Text></View>}
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.greeting}>Messagerie</Text>
-              <Text style={styles.homeName}>{account?.name}</Text>
+              <Text style={styles.headerTitle}>{msgAccount?.name}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.switchButton} onPress={toSocial}><Text style={styles.switchText}>🌍 Social</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.switchBtn} onPress={toSocial}><Text style={styles.switchText}>🌍 Social</Text></TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={styles.homeContent}>
+
+        <ScrollView contentContainerStyle={styles.page}>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Envoyer un message</Text>
-            <Field label="Numéro du destinataire" value={recipientPhone} onChangeText={setRecipientPhone} placeholder="620000000" keyboardType="phone-pad" />
-            <Field label="Message" value={newMessageText} onChangeText={setNewMessageText} placeholder="Ton message" />
-            <Button title="Envoyer" onPress={sendMessage} />
+            <Field label="Destinataire (Numéro)" value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" />
+            <Field label="Message" value={newMessageText} onChangeText={setNewMessageText} />
+            <Button title={loading ? "Envoi..." : "Envoyer"} onPress={sendMessage} loading={loading} />
           </View>
 
-          <Text style={styles.sectionTitle}>Tes discussions</Text>
-          {chats.length === 0 ? (
-            <Text style={styles.bodyCenter}>Aucune discussion.</Text>
-          ) : (
-            chats.map(chat => (
-              <View key={chat.id} style={styles.chatRow}>
-                <View style={styles.chatAvatar}><Text style={styles.chatAvatarText}>👤</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.chatName}>{chat.name}</Text>
-                  <Text style={styles.chatLast}>{chat.messages[chat.messages.length - 1]?.text}</Text>
-                </View>
+          <Text style={styles.sectionTitle}>Discussions</Text>
+          {chats.length === 0 ? <Text style={styles.mutedText}>Aucun message.</Text> : chats.map(chat => (
+            <View key={chat.id} style={styles.chatRow}>
+              <View style={styles.avatar}><Text>👤</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.chatName}>{chat.name}</Text>
+                <Text style={styles.chatLast}>{chat.messages[chat.messages.length - 1]?.text}</Text>
               </View>
-            ))
-          )}
+            </View>
+          ))}
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // --- SOCIAL ---
   if (screen === 'soc_register') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Sociale" onBack={() => go('welcome')} />
         <ScrollView contentContainerStyle={styles.page}>
+          <TouchableOpacity onPress={() => go('welcome')}><Text style={styles.backText}>‹ Retour</Text></TouchableOpacity>
+          <Text style={styles.title}>Compte Social</Text>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-
-          <Text style={styles.label}>Choisis un avatar</Text>
-          <View style={styles.avatarRow}>
-            {['🌍', '🦄', '🐯', '🎨', '🎧', '🚀', '🔥', '🌈'].map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, socAvatar === a && styles.avatarOptionSelected]} onPress={() => setSocAvatar(a)}>
-                <Text style={styles.avatarOptionText}>{a}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Field label="Nom et prénom" value={socName} onChangeText={setSocName} placeholder="Ton nom public" />
-          <Field label="Email ou Téléphone" value={socContact} onChangeText={setSocContact} placeholder="Contact" />
-          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} secureTextEntry />
-          
-          <Button title="Créer mon compte Social" onPress={registerSocial} />
+          <TouchableOpacity style={styles.photoPicker} onPress={() => pickImage('soc')}>
+            {socPhoto ? <Image source={{ uri: socPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoPickerText}>📷 Photo (optionnel)</Text>}
+          </TouchableOpacity>
+          <Field label="Nom" value={socName} onChangeText={setSocName} />
+          <Field label="Email / Téléphone" value={socContact} onChangeText={setSocContact} />
+          <Button title="Créer le compte" onPress={registerSocial} loading={loading} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -353,22 +313,21 @@ export default function App() {
   if (screen === 'soc_home') {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.homeHeader}>
+        <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.avatarSmall, { backgroundColor: C.blue }]}><Text style={styles.avatarSmallText}>{socialAccount?.avatar}</Text></View>
+            {socAccount?.avatar ? <Image source={{ uri: socAccount.avatar }} style={styles.avatarImg} /> : <View style={styles.avatar}><Text>🌍</Text></View>}
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.greeting}>Réseau Social</Text>
-              <Text style={styles.homeName}>{socialAccount?.name}</Text>
+              <Text style={styles.headerTitle}>{socAccount?.name}</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.switchButton} onPress={toMessaging}><Text style={styles.switchText}>💬 Messagerie</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.switchBtn} onPress={toMessaging}><Text style={styles.switchText}>💬 Messagerie</Text></TouchableOpacity>
         </View>
-
-        <ScrollView contentContainerStyle={styles.homeContent}>
+        <ScrollView contentContainerStyle={styles.page}>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Nouvelle publication</Text>
-            <TextInput placeholder="Quoi de neuf ?" style={[styles.input, { minHeight: 80, textAlignVertical: 'top', marginBottom: 12 }]} multiline />
-            <Button title="Publier" onPress={() => setNotice('Publication (bientôt) !')} />
+            <TextInput placeholder="Quoi de neuf ?" style={[styles.input, { height: 80 }]} multiline />
+            <Button title="Publier" onPress={() => setNotice('Post ajouté !')} />
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -380,66 +339,47 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  page: { flexGrow: 1, padding: 20, paddingBottom: 34 },
-  hero: { alignItems: 'center', paddingTop: 50, paddingBottom: 20 },
+  page: { padding: 20, paddingBottom: 40 },
+  hero: { alignItems: 'center', paddingTop: 60, paddingBottom: 20 },
   logo: { width: 80, height: 80, borderRadius: 25, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   logoText: { color: C.white, fontSize: 42, fontWeight: '900' },
   brand: { color: C.dark, fontSize: 28, fontWeight: '900' },
-  subtitle: { color: C.muted, fontSize: 16, marginTop: 6, textAlign: 'center' },
-  
-  welcomeCard: { padding: 20 },
+  subtitle: { color: C.muted, fontSize: 16, marginTop: 6 },
   bigButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: 20, padding: 20, borderWidth: 1, borderColor: C.border },
   bigButtonIconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
   bigButtonIcon: { fontSize: 30 },
   bigButtonTitle: { color: C.dark, fontSize: 20, fontWeight: '800', marginBottom: 4 },
   bigButtonSubtitle: { color: C.muted, fontSize: 14 },
-
-  header: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: C.border },
-  backText: { fontSize: 34, color: C.green, marginRight: 12, lineHeight: 38, marginTop: -4 },
-  headerTitle: { color: C.dark, fontSize: 19, fontWeight: '800' },
-
-  fieldWrap: { marginBottom: 14 },
+  backText: { fontSize: 16, color: C.green, fontWeight: '700', marginBottom: 20 },
+  title: { fontSize: 24, fontWeight: '800', color: C.dark, marginBottom: 20 },
   label: { color: C.dark, fontWeight: '700', fontSize: 15, marginBottom: 8, marginTop: 12 },
-  input: { minHeight: 52, borderWidth: 1, borderColor: C.border, backgroundColor: C.white, borderRadius: 13, paddingHorizontal: 14, color: C.dark, fontSize: 16 },
-  
-  button: { backgroundColor: C.green, borderRadius: 15, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
+  input: { minHeight: 50, borderWidth: 1, borderColor: C.border, backgroundColor: C.white, borderRadius: 13, paddingHorizontal: 14, fontSize: 16 },
+  fieldWrap: { marginBottom: 14 },
+  button: { backgroundColor: C.green, borderRadius: 15, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   buttonText: { color: C.white, fontSize: 17, fontWeight: '800' },
   buttonSecondary: { backgroundColor: C.green2, borderWidth: 1, borderColor: '#D1E8DC' },
   buttonSecondaryText: { color: C.green },
-
-  body: { color: C.muted, fontSize: 16, marginBottom: 12 },
-  bodyCenter: { color: C.muted, fontSize: 15, textAlign: 'center', marginBottom: 18 },
-  errorText: { color: C.red, fontSize: 13, textAlign: 'center', marginBottom: 10, fontWeight: '600' },
-
-  select: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 13, padding: 15, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between' },
+  errorText: { color: C.red, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  mutedText: { color: C.muted, fontSize: 14, textAlign: 'center' },
+  select: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 13, padding: 15, marginBottom: 14 },
   selectText: { color: C.dark, fontSize: 16 },
-  chevron: { color: C.muted, fontSize: 18 },
-  
-  homeHeader: { padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: C.border },
+  header: { padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.border },
   greeting: { color: C.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
-  homeName: { color: C.dark, fontSize: 20, fontWeight: '900' },
-  switchButton: { backgroundColor: C.green2, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  headerTitle: { color: C.dark, fontSize: 20, fontWeight: '900' },
+  switchBtn: { backgroundColor: C.green2, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
   switchText: { color: C.green, fontWeight: '800', fontSize: 13 },
-  homeContent: { padding: 20 },
-  sectionTitle: { color: C.dark, fontSize: 20, fontWeight: '800', marginBottom: 16 },
-  card: { backgroundColor: C.white, borderRadius: 24, padding: 20, marginTop: 12, borderWidth: 1, borderColor: '#E9EFEB' },
-  
-  avatarSmall: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
-  avatarSmallText: { fontSize: 22 },
-  chatRow: { backgroundColor: C.white, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: '#EAF0EC' },
-  chatAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  chatAvatarText: { fontSize: 22 },
-  chatName: { color: C.dark, fontSize: 16, fontWeight: '800', marginBottom: 5 },
-  chatLast: { color: C.muted, fontSize: 13 },
-
-  avatarRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
-  avatarOption: { width: 50, height: 50, borderRadius: 25, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.border },
-  avatarOptionSelected: { borderColor: C.green, backgroundColor: C.green2 },
-  avatarOptionText: { fontSize: 24 },
-
+  card: { backgroundColor: C.white, borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: C.border },
+  sectionTitle: { fontSize: 20, fontWeight: '800', color: C.dark, marginBottom: 16 },
+  avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: C.green2, alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 50, height: 50, borderRadius: 25 },
+  chatRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, padding: 12, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: C.border },
+  chatName: { color: C.dark, fontSize: 16, fontWeight: '700' },
+  chatLast: { color: C.muted, fontSize: 13, marginTop: 4 },
+  photoPicker: { height: 100, width: 100, borderRadius: 50, backgroundColor: C.white, borderWidth: 2, borderColor: C.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 20, overflow: 'hidden' },
+  photoPreview: { width: '100%', height: '100%' },
+  photoPickerText: { color: C.muted, fontSize: 12, textAlign: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, maxHeight: '70%' },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: C.dark, marginBottom: 16, textAlign: 'center' },
-  countryItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.bg },
+  countryItem: { padding: 15, borderBottomWidth: 1, borderBottomColor: C.bg },
   countryItemText: { color: C.dark, fontSize: 16, textAlign: 'center' },
 });
