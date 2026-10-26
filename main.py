@@ -179,11 +179,11 @@ def verify_otp(req: VerifyMsgReq, db: Session = Depends(get_db)):
 
 @app.get("/auth/check-phone/{phone}")
 def check_phone(phone: str, db: Session = Depends(get_db)):
-    # Permet à l'app de vérifier si un compte existe avant de se connecter
-    user = db.query(UserMessaging).filter(UserMessaging.phone == phone).first()
+    # Recherche intelligente : trouve le numéro même si l'utilisateur oublie l'indicatif
+    user = db.query(UserMessaging).filter(UserMessaging.phone.endswith(phone)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Numéro non trouvé")
-    return {"status": "found", "name": user.name, "avatar": user.avatar or "👤"}
+    return {"status": "found", "phone": user.phone, "name": user.name, "avatar": user.avatar or "👤", "country_dial": user.country_dial}
 
 @app.post("/messages/send")
 def send_message(req: SendMsgReq, db: Session = Depends(get_db)):
