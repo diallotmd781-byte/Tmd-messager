@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
+  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard, ActivityIndicator
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = 'https://tmd-messager.onrender.com';
 
@@ -78,7 +79,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // --- MESSAGERIE CLASSIQUE ---
+  // --- ÉTATS MESSAGERIE ---
   const [account, setAccount] = useState(null);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -95,11 +96,10 @@ export default function App() {
   const [newMessageText, setNewMessageText] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
 
-  // États pour le Scan Visage
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
-  // --- SOCIAL ---
+  // --- ÉTATS SOCIAL ---
   const [socialAccount, setSocialAccount] = useState(null);
   const [feed, setFeed] = useState([]);
   const [newPostText, setNewPostText] = useState('');
@@ -110,7 +110,7 @@ export default function App() {
   const [socBirth, setSocBirth] = useState('');
   const [socAvatar, setSocAvatar] = useState('🌍');
 
-  // --- MESSAGERIE SOCIALE (DM) ---
+  // --- ÉTATS MESSAGERIE SOCIALE ---
   const [socChats, setSocChats] = useState([]);
   const [activeSocChatId, setActiveSocChatId] = useState(null);
   const [socNewMessageText, setSocNewMessageText] = useState('');
@@ -120,6 +120,19 @@ export default function App() {
   // --- LOGIN ---
   const [loginPhone, setLoginPhone] = useState('');
   const [loginContact, setLoginContact] = useState('');
+
+  // CHARGEMENT DE LA SESSION AU DÉMARRAGE
+  useEffect(() => {
+    async function loadSession() {
+      try {
+        const savedAccount = await AsyncStorage.getItem('@account');
+        const savedSocial = await AsyncStorage.getItem('@socialAccount');
+        if (savedAccount) setAccount(JSON.parse(savedAccount));
+        if (savedSocial) setSocialAccount(JSON.parse(savedSocial));
+      } catch (e) { console.log("Erreur chargement session", e); }
+    }
+    loadSession();
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -134,6 +147,26 @@ export default function App() {
   }, [screen, account, socialAccount]);
 
   function go(next) { Keyboard.dismiss(); setNotice(''); setScreen(next); }
+
+  // SAUVEGARDE ET DÉCONNEXION
+  async function saveAccount(acc) {
+    setAccount(acc);
+    await AsyncStorage.setItem('@account', JSON.stringify(acc));
+  }
+  async function saveSocialAccount(acc) {
+    setSocialAccount(acc);
+    await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc));
+  }
+  async function logoutMessaging() {
+    setAccount(null);
+    await AsyncStorage.removeItem('@account');
+    go('welcome');
+  }
+  async function logoutSocial() {
+    setSocialAccount(null);
+    await AsyncStorage.removeItem('@socialAccount');
+    go('welcome');
+  }
 
   // ==========================================
   // LOGIQUE SCAN VISAGE (SIMULÉ)
@@ -194,7 +227,8 @@ export default function App() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial, code: '123456', name: msgName, birth_date: msgBirth, password: demoHash(msgPassword), avatar: msgAvatar })
       });
-      setAccount({ name: msgName, phone: normalizePhone(msgPhone), dial: selectedCountry.dial, avatar: msgAvatar });
+      const newAcc = { name: msgName, phone: normalizePhone(msgPhone), dial: selectedCountry.dial, avatar: msgAvatar };
+      await saveAccount(newAcc);
       go('msg_home');
     } catch (err) { setNotice("Erreur lors de la validation finale."); } 
     finally { setIsLoading(false); }
@@ -210,7 +244,8 @@ export default function App() {
         return setNotice("Ce numéro n'a pas de compte. Crée-en un !");
       }
       const user = await res.json();
-      setAccount({ name: user.name, phone: normalizePhone(loginPhone), dial: '', avatar: user.avatar });
+      const newAcc = { name: user.name, phone: user.phone, dial: user.country_dial, avatar: user.avatar };
+      await saveAccount(newAcc);
       go('msg_home');
     } catch (err) { setNotice("Erreur de connexion."); }
     finally { setIsLoading(false); }
@@ -264,7 +299,8 @@ export default function App() {
     setIsLoading(true);
     try {
       await fetch(`${API_URL}/social/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contact: socContact, name: socName, birth_date: socBirth, password: demoHash(socPassword), avatar: socAvatar }) });
-      setSocialAccount({ name: socName, contact: socContact, avatar: socAvatar });
+      const newSoc = { name: socName, contact: socContact, avatar: socAvatar };
+      await saveSocialAccount(newSoc);
       go('soc_home');
     } catch (err) { setNotice("Erreur."); } 
     finally { setIsLoading(false); }
@@ -280,7 +316,8 @@ export default function App() {
         return setNotice("Ce compte n'existe pas. Crée-en un !");
       }
       const user = await res.json();
-      setSocialAccount({ name: user.name, contact: loginContact, avatar: user.avatar });
+      const newSoc = { name: user.name, contact: loginContact, avatar: user.avatar };
+      await saveSocialAccount(newSoc);
       go('soc_home');
     } catch (err) { setNotice("Erreur de connexion."); }
     finally { setIsLoading(false); }
@@ -354,7 +391,7 @@ export default function App() {
   // INTERFACES (ÉCRANS)
   // ==========================================
 
-  // 1. ÉCRAN D'ACCUEIL (EXACTEMENT COMME TA CAPTURE)
+  // 1. ÉCRAN D'ACCUEIL (REDIRECTION INTELLIGENTE)
   if (screen === 'welcome') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -363,18 +400,21 @@ export default function App() {
           <Text style={styles.brand}>TMD Messenger</Text>
         </View>
         <View style={styles.welcomeCard}>
-          <TouchableOpacity style={styles.bigButton} onPress={() => go('msg_auth_choice')}>
+          {/* BOUTON MESSAGERIE */}
+          <TouchableOpacity style={styles.bigButton} onPress={() => account ? go('msg_home') : go('msg_auth_choice')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
             <View>
               <Text style={styles.bigButtonTitle}>Messagerie</Text>
-              <Text style={styles.bigButtonSubtitle}>Discussions privées</Text>
+              <Text style={styles.bigButtonSubtitle}>{account ? `Connecté en tant que ${account.name}` : "Discussions privées"}</Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => go('soc_auth_choice')}>
+          
+          {/* BOUTON SOCIAL */}
+          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => socialAccount ? go('soc_home') : go('soc_auth_choice')}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
             <View>
               <Text style={styles.bigButtonTitle}>Réseau Social</Text>
-              <Text style={styles.bigButtonSubtitle}>Partage public</Text>
+              <Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté en tant que ${socialAccount.name}` : "Partage public"}</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -382,7 +422,7 @@ export default function App() {
     );
   }
 
-  // 2. CHOIX MESSAGERIE (Se connecter / Créer un compte)
+  // 2. CHOIX MESSAGERIE
   if (screen === 'msg_auth_choice') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -402,7 +442,7 @@ export default function App() {
     );
   }
 
-  // 3. CHOIX SOCIAL (Se connecter / Créer un compte)
+  // 3. CHOIX SOCIAL
   if (screen === 'soc_auth_choice') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -535,7 +575,7 @@ export default function App() {
           <Text style={styles.appTitle}>TMD</Text>
           <View style={{ flexDirection: 'row', gap: 15 }}>
             <TouchableOpacity onPress={() => setShowNewChatModal(true)}><Text style={{ fontSize: 24 }}>📝</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => go('welcome')}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
+            <TouchableOpacity onPress={logoutMessaging}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
           </View>
         </View>
         <FlatList
@@ -666,7 +706,7 @@ export default function App() {
           <Text style={[styles.appTitle, { color: C.blueDark }]}>Social</Text>
           <View style={{ flexDirection: 'row', gap: 15 }}>
             <TouchableOpacity onPress={() => go('soc_chat_list')}><Text style={{ fontSize: 24 }}>✉️</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => go('welcome')}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
+            <TouchableOpacity onPress={logoutSocial}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
           </View>
         </View>
         <FlatList
