@@ -67,7 +67,7 @@ def get_db():
 
 app = FastAPI()
 
-# --- CONFIGURATION CORS (Autorise les téléphones à se connecter) ---
+# --- CONFIGURATION CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -158,6 +158,35 @@ def send_message(req: SendMsgReq, db: Session = Depends(get_db)):
     db.add(new_msg)
     db.commit()
     return {"status": "sent"}
+
+# NOUVELLE ROUTE : Récupérer l'historique des discussions
+@app.get("/messages/chats/{phone}")
+def get_user_chats(phone: str, db: Session = Depends(get_db)):
+    user = db.query(UserMessaging).filter(UserMessaging.phone == phone).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    
+    # On récupère tous les messages envoyés ou reçus
+    messages = db.query(Message).filter(
+        (Message.sender_id == user.id) | (Message.recipient_id == user.id)
+    ).order_by(Message.created_at.asc()).all()
+
+    result = []
+    for m in messages:
+        is_mine = m.sender_id == user.id
+        # On identifie l'interlocuteur
+        other_user = m.recipient if is_mine else m.sender
+        
+        result.append({
+            "id": m.id,
+            "text": m.text,
+            "mine": is_mine,
+            "other_phone": other_user.phone,
+            "other_name": other_user.name or other_user.phone,
+            "other_avatar": other_user.avatar or "👤",
+            "time": m.created_at.strftime("%H:%M")
+        })
+    return result
 
 # --- ROUTES SOCIAL ---
 @app.post("/social/register")
