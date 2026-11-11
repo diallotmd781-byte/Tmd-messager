@@ -1,4 +1,9 @@
 fastapi
 uvicorn
 pydantic
-weezy
+sqlalchemy
+psycopg2-binary
+weezy-sdk
+
+
+
