@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard, ActivityIndicator
+  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -79,7 +79,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // --- ÉTATS MESSAGERIE ---
+  // --- MESSAGERIE CLASSIQUE ---
   const [account, setAccount] = useState(null);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
@@ -99,7 +99,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
-  // --- ÉTATS SOCIAL ---
+  // --- SOCIAL ---
   const [socialAccount, setSocialAccount] = useState(null);
   const [feed, setFeed] = useState([]);
   const [newPostText, setNewPostText] = useState('');
@@ -110,7 +110,7 @@ export default function App() {
   const [socBirth, setSocBirth] = useState('');
   const [socAvatar, setSocAvatar] = useState('🌍');
 
-  // --- ÉTATS MESSAGERIE SOCIALE ---
+  // --- MESSAGERIE SOCIALE (DM) ---
   const [socChats, setSocChats] = useState([]);
   const [activeSocChatId, setActiveSocChatId] = useState(null);
   const [socNewMessageText, setSocNewMessageText] = useState('');
@@ -119,9 +119,10 @@ export default function App() {
 
   // --- LOGIN ---
   const [loginPhone, setLoginPhone] = useState('');
+  const [loginPassword, setLoginPassword] = useState(''); // Mot de passe Messagerie
   const [loginContact, setLoginContact] = useState('');
+  const [loginSocPassword, setLoginSocPassword] = useState(''); // Mot de passe Social
 
-  // CHARGEMENT DE LA SESSION AU DÉMARRAGE
   useEffect(() => {
     async function loadSession() {
       try {
@@ -129,7 +130,7 @@ export default function App() {
         const savedSocial = await AsyncStorage.getItem('@socialAccount');
         if (savedAccount) setAccount(JSON.parse(savedAccount));
         if (savedSocial) setSocialAccount(JSON.parse(savedSocial));
-      } catch (e) { console.log("Erreur chargement session", e); }
+      } catch (e) { console.log("Erreur session", e); }
     }
     loadSession();
   }, []);
@@ -148,47 +149,22 @@ export default function App() {
 
   function go(next) { Keyboard.dismiss(); setNotice(''); setScreen(next); }
 
-  // SAUVEGARDE ET DÉCONNEXION
-  async function saveAccount(acc) {
-    setAccount(acc);
-    await AsyncStorage.setItem('@account', JSON.stringify(acc));
-  }
-  async function saveSocialAccount(acc) {
-    setSocialAccount(acc);
-    await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc));
-  }
-  async function logoutMessaging() {
-    setAccount(null);
-    await AsyncStorage.removeItem('@account');
-    go('welcome');
-  }
-  async function logoutSocial() {
-    setSocialAccount(null);
-    await AsyncStorage.removeItem('@socialAccount');
-    go('welcome');
-  }
+  async function saveAccount(acc) { setAccount(acc); await AsyncStorage.setItem('@account', JSON.stringify(acc)); }
+  async function saveSocialAccount(acc) { setSocialAccount(acc); await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc)); }
+  async function logoutMessaging() { setAccount(null); await AsyncStorage.removeItem('@account'); go('welcome'); }
+  async function logoutSocial() { setSocialAccount(null); await AsyncStorage.removeItem('@socialAccount'); go('welcome'); }
 
-  // ==========================================
-  // LOGIQUE SCAN VISAGE (SIMULÉ)
-  // ==========================================
+  // SCAN VISAGE
   function startFaceScan() {
-    setIsScanning(true);
-    setScanProgress(0);
+    setIsScanning(true); setScanProgress(0);
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 10;
-      setScanProgress(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setIsScanning(false);
-        finalizeMsgRegistration();
-      }
+      progress += 10; setScanProgress(progress);
+      if (progress >= 100) { clearInterval(interval); setIsScanning(false); finalizeMsgRegistration(); }
     }, 300);
   }
 
-  // ==========================================
-  // LOGIQUE MESSAGERIE CLASSIQUE
-  // ==========================================
+  // --- LOGIQUE MESSAGERIE ---
   async function loadChats() {
     try {
       const res = await fetch(`${API_URL}/messages/chats/${normalizePhone(account.phone)}`);
@@ -205,18 +181,17 @@ export default function App() {
   }
 
   async function sendMsgOtp() {
-    if (!msgName.trim() || normalizePhone(msgPhone).length < 5 || !msgBirth) return setNotice('Remplis toutes les informations.');
-    if (!isValidDate(msgBirth)) return setNotice('Date de naissance invalide (JJ/MM/AAAA).');
+    if (!msgName.trim() || normalizePhone(msgPhone).length < 5 || !msgBirth || !msgPassword) return setNotice('Remplis toutes les informations.');
+    if (!isValidDate(msgBirth)) return setNotice('Date invalide (JJ/MM/AAAA).');
     setIsLoading(true);
     try {
       await fetch(`${API_URL}/auth/send-otp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial }) });
       go('msg_otp');
-    } catch (err) { setNotice("Erreur réseau."); } 
-    finally { setIsLoading(false); }
+    } catch (err) { setNotice("Erreur réseau."); } finally { setIsLoading(false); }
   }
 
   async function verifyMsgOtp() {
-    if (msgOtp !== '123456') return setNotice('Code incorrect (utilise 123456).');
+    if (msgOtp !== '123456') return setNotice('Code incorrect (123456).');
     go('msg_face_scan');
   }
 
@@ -228,27 +203,26 @@ export default function App() {
         body: JSON.stringify({ phone: normalizePhone(msgPhone), country_dial: selectedCountry.dial, code: '123456', name: msgName, birth_date: msgBirth, password: demoHash(msgPassword), avatar: msgAvatar })
       });
       const newAcc = { name: msgName, phone: normalizePhone(msgPhone), dial: selectedCountry.dial, avatar: msgAvatar };
-      await saveAccount(newAcc);
-      go('msg_home');
-    } catch (err) { setNotice("Erreur lors de la validation finale."); } 
-    finally { setIsLoading(false); }
+      await saveAccount(newAcc); go('msg_home');
+    } catch (err) { setNotice("Erreur finale."); } finally { setIsLoading(false); }
   }
 
   async function loginMessaging() {
-    if (!loginPhone.trim()) return setNotice('Entre ton numéro.');
+    if (!loginPhone.trim() || !loginPassword.trim()) return setNotice('Entre ton numéro et ton mot de passe.');
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/auth/check-phone/${normalizePhone(loginPhone)}`);
+      const res = await fetch(`${API_URL}/auth/login`, { 
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ phone: normalizePhone(loginPhone), password: demoHash(loginPassword) }) 
+      });
+      const data = await res.json();
       if (!res.ok) {
         setIsLoading(false);
-        return setNotice("Ce numéro n'a pas de compte. Crée-en un !");
+        return setNotice(data.detail || "Erreur de connexion.");
       }
-      const user = await res.json();
-      const newAcc = { name: user.name, phone: user.phone, dial: user.country_dial, avatar: user.avatar };
-      await saveAccount(newAcc);
-      go('msg_home');
-    } catch (err) { setNotice("Erreur de connexion."); }
-    finally { setIsLoading(false); }
+      const newAcc = { name: data.name, phone: data.phone, dial: data.country_dial, avatar: data.avatar };
+      await saveAccount(newAcc); go('msg_home');
+    } catch (err) { setNotice("Erreur réseau."); } finally { setIsLoading(false); }
   }
 
   function startNewChat() {
@@ -272,69 +246,53 @@ export default function App() {
     setNewMessageText('');
     try {
       const res = await fetch(`${API_URL}/messages/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender_phone: normalizePhone(account.phone), recipient_phone: normalizePhone(recipient), text }) });
-      if (!res.ok) {
-        setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c));
-        return;
-      }
+      if (!res.ok) { setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c)); return; }
       setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'sent' } : m) } : c));
-    } catch (err) {
-      setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c));
-    }
+    } catch (err) { setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c)); }
   }
 
-  // ==========================================
-  // LOGIQUE SOCIAL
-  // ==========================================
+  // --- LOGIQUE SOCIAL ---
   async function loadFeed() {
-    try {
-      const res = await fetch(`${API_URL}/social/feed`);
-      const data = await res.json();
-      setFeed(data);
-    } catch (err) { console.log(err); }
+    try { const res = await fetch(`${API_URL}/social/feed`); setFeed(await res.json()); } catch (err) { console.log(err); }
   }
 
   async function registerSocial() {
     if (!socName || !socContact || !socPassword || !socBirth) return setNotice('Remplis tous les champs.');
-    if (!isValidDate(socBirth)) return setNotice('Date de naissance invalide.');
+    if (!isValidDate(socBirth)) return setNotice('Date invalide.');
     setIsLoading(true);
     try {
       await fetch(`${API_URL}/social/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contact: socContact, name: socName, birth_date: socBirth, password: demoHash(socPassword), avatar: socAvatar }) });
       const newSoc = { name: socName, contact: socContact, avatar: socAvatar };
-      await saveSocialAccount(newSoc);
-      go('soc_home');
-    } catch (err) { setNotice("Erreur."); } 
-    finally { setIsLoading(false); }
+      await saveSocialAccount(newSoc); go('soc_home');
+    } catch (err) { setNotice("Erreur."); } finally { setIsLoading(false); }
   }
 
   async function loginSocial() {
-    if (!loginContact.trim()) return setNotice('Entre ton email ou numéro.');
+    if (!loginContact.trim() || !loginSocPassword.trim()) return setNotice('Entre ton contact et ton mot de passe.');
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/social/check-user/${loginContact}`);
+      const res = await fetch(`${API_URL}/social/login`, { 
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ contact: loginContact, password: demoHash(loginSocPassword) }) 
+      });
+      const data = await res.json();
       if (!res.ok) {
         setIsLoading(false);
-        return setNotice("Ce compte n'existe pas. Crée-en un !");
+        return setNotice(data.detail || "Erreur de connexion.");
       }
-      const user = await res.json();
-      const newSoc = { name: user.name, contact: loginContact, avatar: user.avatar };
-      await saveSocialAccount(newSoc);
-      go('soc_home');
-    } catch (err) { setNotice("Erreur de connexion."); }
-    finally { setIsLoading(false); }
+      const newSoc = { name: data.name, contact: loginContact, avatar: data.avatar };
+      await saveSocialAccount(newSoc); go('soc_home');
+    } catch (err) { setNotice("Erreur réseau."); } finally { setIsLoading(false); }
   }
 
   async function publishPost() {
     if (!newPostText.trim() || !socialAccount) return;
     try {
       await fetch(`${API_URL}/social/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ author_contact: socialAccount.contact, text: newPostText }) });
-      setNewPostText('');
-      loadFeed();
-    } catch { setNotice('Erreur publication.'); }
+      setNewPostText(''); loadFeed();
+    } catch { setNotice('Erreur.'); }
   }
 
-  // ==========================================
-  // LOGIQUE MESSAGERIE SOCIALE
-  // ==========================================
   async function loadSocChats() {
     try {
       const res = await fetch(`${API_URL}/social/messages/chats/${socialAccount.contact}`);
@@ -355,15 +313,9 @@ export default function App() {
     setIsLoading(true);
     try {
       const res = await fetch(`${API_URL}/social/search/${encodeURIComponent(socSearchName)}`);
-      if (!res.ok) {
-        setIsLoading(false);
-        return setNotice(`Aucun utilisateur trouvé avec le nom "${socSearchName}".`);
-      }
+      if (!res.ok) { setIsLoading(false); return setNotice(`Aucun utilisateur trouvé.`); }
       const user = await res.json();
-      if (user.contact === socialAccount.contact) {
-        setIsLoading(false);
-        return setNotice("Tu ne peux pas t'envoyer un message à toi-même.");
-      }
+      if (user.contact === socialAccount.contact) { setIsLoading(false); return setNotice("Tu ne peux pas t'envoyer de message."); }
       const contactId = user.contact;
       const existing = socChats.find(c => c.contact === contactId);
       if (existing) setActiveSocChatId(existing.id);
@@ -372,8 +324,7 @@ export default function App() {
         setActiveSocChatId(contactId);
       }
       setSocSearchName(''); setShowNewSocChatModal(false); go('soc_chat');
-    } catch (err) { setNotice("Erreur de recherche."); } 
-    finally { setIsLoading(false); }
+    } catch (err) { setNotice("Erreur."); } finally { setIsLoading(false); }
   }
 
   async function sendSocMessageToChat(recipient) {
@@ -382,98 +333,70 @@ export default function App() {
     const newMsg = { id: makeId(), text, mine: true, time: nowTime() };
     setSocChats(prev => prev.map(c => c.contact === recipient ? { ...c, messages: [...c.messages, newMsg] } : c));
     setSocNewMessageText('');
-    try {
-      await fetch(`${API_URL}/social/messages/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender_contact: socialAccount.contact, recipient_contact: recipient, text }) });
-    } catch { console.log('Erreur DM social'); }
+    try { await fetch(`${API_URL}/social/messages/send`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sender_contact: socialAccount.contact, recipient_contact: recipient, text }) }); } catch { console.log('Erreur DM'); }
   }
 
   // ==========================================
-  // INTERFACES (ÉCRANS)
+  // INTERFACES
   // ==========================================
-
-  // 1. ÉCRAN D'ACCUEIL (REDIRECTION INTELLIGENTE)
   if (screen === 'welcome') {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.hero}>
-          <View style={styles.logo}><Text style={styles.logoText}>T</Text></View>
-          <Text style={styles.brand}>TMD Messenger</Text>
-        </View>
+        <View style={styles.hero}><View style={styles.logo}><Text style={styles.logoText}>T</Text></View><Text style={styles.brand}>TMD Messenger</Text></View>
         <View style={styles.welcomeCard}>
-          {/* BOUTON MESSAGERIE */}
           <TouchableOpacity style={styles.bigButton} onPress={() => account ? go('msg_home') : go('msg_auth_choice')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Messagerie</Text>
-              <Text style={styles.bigButtonSubtitle}>{account ? `Connecté en tant que ${account.name}` : "Discussions privées"}</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Messagerie</Text><Text style={styles.bigButtonSubtitle}>{account ? `Connecté: ${account.name}` : "Discussions privées"}</Text></View>
           </TouchableOpacity>
-          
-          {/* BOUTON SOCIAL */}
           <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => socialAccount ? go('soc_home') : go('soc_auth_choice')}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Réseau Social</Text>
-              <Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté en tant que ${socialAccount.name}` : "Partage public"}</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Réseau Social</Text><Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté: ${socialAccount.name}` : "Partage public"}</Text></View>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 2. CHOIX MESSAGERIE
   if (screen === 'msg_auth_choice') {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Messagerie" onBack={() => go('welcome')} />
         <View style={styles.page}>
           <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.bodyCenter}>Bienvenue dans ta messagerie privée sécurisée.</Text>
-            <TouchableOpacity style={styles.button} onPress={() => go('msg_login')}>
-              <Text style={styles.buttonText}>Se connecter</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2, marginTop: 15 }]} onPress={() => go('msg_register')}>
-              <Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text>
-            </TouchableOpacity>
+            <Text style={styles.bodyCenter}>Bienvenue.</Text>
+            <TouchableOpacity style={styles.button} onPress={() => go('msg_login')}><Text style={styles.buttonText}>Se connecter</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2, marginTop: 15 }]} onPress={() => go('msg_register')}><Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text></TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  // 3. CHOIX SOCIAL
   if (screen === 'soc_auth_choice') {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Réseau Social" onBack={() => go('welcome')} />
         <View style={styles.page}>
           <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.bodyCenter}>Rejoins la communauté et partage avec le monde.</Text>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={() => go('soc_login')}>
-              <Text style={styles.buttonText}>Se connecter</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue, marginTop: 15 }]} onPress={() => go('soc_register')}>
-              <Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text>
-            </TouchableOpacity>
+            <Text style={styles.bodyCenter}>Rejoins la communauté.</Text>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={() => go('soc_login')}><Text style={styles.buttonText}>Se connecter</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue, marginTop: 15 }]} onPress={() => go('soc_register')}><Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text></TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  // --- CONNEXION MESSAGERIE ---
+  // --- LOGIN MESSAGERIE ---
   if (screen === 'msg_login') {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Connexion Messagerie" onBack={() => go('msg_auth_choice')} />
         <View style={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Text style={styles.bodyCenter}>Entre ton numéro de téléphone pour retrouver tes discussions.</Text>
           <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone} placeholder="620000000" keyboardType="phone-pad" />
-          <TouchableOpacity style={styles.button} onPress={loginMessaging}>
-            <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
-          </TouchableOpacity>
+          <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword} isPassword={true} placeholder="Ton mot de passe" />
+          <TouchableOpacity style={styles.button} onPress={loginMessaging}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -489,31 +412,23 @@ export default function App() {
           <Text style={styles.label}>Photo de profil</Text>
           <View style={styles.avatarRow}>
             {['👤', '😎', '👩', '🧑', '🦁'].map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}>
-                <Text style={styles.avatarOptionText}>{a}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}><Text style={styles.avatarOptionText}>{a}</Text></TouchableOpacity>
             ))}
           </View>
           <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
           <Text style={styles.label}>Pays</Text>
-          <TouchableOpacity style={styles.select} onPress={() => setShowCountries(true)}>
-            <Text style={styles.selectText}>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dial})</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.select} onPress={() => setShowCountries(true)}><Text style={styles.selectText}>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dial})</Text></TouchableOpacity>
           <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
           <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
           <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} isPassword={true} />
-          <TouchableOpacity style={styles.button} onPress={sendMsgOtp}>
-            <Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text>
-          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={sendMsgOtp}><Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text></TouchableOpacity>
         </ScrollView>
         <Modal visible={showCountries} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <FlatList data={COUNTRIES} keyExtractor={(i) => i.name} renderItem={({ item }) => (
-                <TouchableOpacity style={styles.countryItem} onPress={() => { setSelectedCountry(item); setShowCountries(false); }}><Text style={styles.countryItemText}>{item.flag} {item.name} ({item.dial})</Text></TouchableOpacity>
-              )}/>
-            </View>
-          </View>
+          <View style={styles.modalOverlay}><View style={styles.modalCard}>
+            <FlatList data={COUNTRIES} keyExtractor={(i) => i.name} renderItem={({ item }) => (
+              <TouchableOpacity style={styles.countryItem} onPress={() => { setSelectedCountry(item); setShowCountries(false); }}><Text style={styles.countryItemText}>{item.flag} {item.name} ({item.dial})</Text></TouchableOpacity>
+            )}/>
+          </View></View>
         </Modal>
       </SafeAreaView>
     );
@@ -531,34 +446,17 @@ export default function App() {
     );
   }
 
-  // --- SCAN VISAGE ---
   if (screen === 'msg_face_scan') {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: '#000' }]}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={{ color: C.white, fontSize: 22, fontWeight: 'bold', marginBottom: 10 }}>Vérification de présence</Text>
-          <Text style={{ color: C.muted, fontSize: 14, marginBottom: 40, textAlign: 'center', paddingHorizontal: 20 }}>
-            Place ton visage dans le cercle pour prouver que tu es une vraie personne.
-          </Text>
-          <View style={{ 
-            width: 250, height: 250, borderRadius: 125, borderWidth: 4, 
-            borderColor: isScanning ? C.green : C.border, 
-            justifyContent: 'center', alignItems: 'center',
-            overflow: 'hidden'
-          }}>
-            {isScanning && (
-              <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(23, 107, 80, 0.3)' }} />
-            )}
+          <View style={{ width: 250, height: 250, borderRadius: 125, borderWidth: 4, borderColor: isScanning ? C.green : C.border, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
+            {isScanning && <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(23, 107, 80, 0.3)' }} />}
             <Text style={{ fontSize: 80 }}>🧑</Text>
-            {isScanning && (
-               <Text style={{ position: 'absolute', bottom: 20, color: C.white, fontWeight: 'bold' }}>{scanProgress}%</Text>
-            )}
+            {isScanning && <Text style={{ position: 'absolute', bottom: 20, color: C.white, fontWeight: 'bold' }}>{scanProgress}%</Text>}
           </View>
-          <TouchableOpacity 
-            style={[styles.button, { width: 250, marginTop: 50, backgroundColor: isScanning ? C.muted : C.green }]} 
-            onPress={startFaceScan}
-            disabled={isScanning}
-          >
+          <TouchableOpacity style={[styles.button, { width: 250, marginTop: 50, backgroundColor: isScanning ? C.muted : C.green }]} onPress={startFaceScan} disabled={isScanning}>
             <Text style={styles.buttonText}>{isScanning ? "Scan en cours..." : "Démarrer le scan"}</Text>
           </TouchableOpacity>
         </View>
@@ -580,15 +478,12 @@ export default function App() {
         </View>
         <FlatList
           data={chats} keyExtractor={item => item.id} contentContainerStyle={{ padding: 10 }}
-          ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune discussion. Appuie sur 📝.</Text>}
+          ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune discussion.</Text>}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.chatRow} onPress={() => { setActiveChatId(item.id); go('msg_chat'); }}>
               <View style={styles.chatAvatar}><Text style={styles.chatAvatarText}>{item.avatar || '👤'}</Text></View>
               <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: C.bg, paddingBottom: 15 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={styles.chatName}>{item.name}</Text>
-                  <Text style={{ fontSize: 12, color: C.muted }}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].time : ''}</Text>
-                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={styles.chatName}>{item.name}</Text><Text style={{ fontSize: 12, color: C.muted }}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].time : ''}</Text></View>
                 <Text style={styles.chatLast} numberOfLines={1}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].text : 'Nouvelle discussion'}</Text>
               </View>
             </TouchableOpacity>
@@ -608,11 +503,9 @@ export default function App() {
     );
   }
 
-  // --- CHAT MESSAGERIE CLASSIQUE ---
   if (screen === 'msg_chat') {
     const chat = chats.find(c => c.id === activeChatId);
     if (!chat) return null;
-
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={[styles.safe, { backgroundColor: C.chatBg }]}>
@@ -623,8 +516,8 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: C.white, marginLeft: 10 }]}>{chat.name}</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 15, paddingRight: 10 }}>
-              <TouchableOpacity onPress={() => setNotice("Appel audio bientôt disponible !")}><Text style={{ fontSize: 20, color: C.white }}>📞</Text></TouchableOpacity>
-              <TouchableOpacity onPress={() => setNotice("Appel vidéo bientôt disponible !")}><Text style={{ fontSize: 20, color: C.white }}>📹</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setNotice("Bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📞</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setNotice("Bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📹</Text></TouchableOpacity>
             </View>
           </View>
           <FlatList
@@ -634,22 +527,18 @@ export default function App() {
                 <Text style={{ color: C.dark, fontSize: 16 }}>{m.text}</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 }}>
                   <Text style={{ color: C.muted, fontSize: 11, marginRight: 4 }}>{m.time}</Text>
-                  {m.mine && (
-                    <Text style={{ fontSize: 12, color: m.status === 'failed' ? C.red : m.status === 'read' ? '#34B7F1' : C.muted }}>
-                      {m.status === 'failed' ? '⚠️' : m.status === 'sending' ? '🕒' : m.status === 'read' ? '✓✓' : '✓'}
-                    </Text>
-                  )}
+                  {m.mine && <Text style={{ fontSize: 12, color: m.status === 'failed' ? C.red : m.status === 'read' ? '#34B7F1' : C.muted }}>{m.status === 'failed' ? '⚠️' : m.status === 'sending' ? '🕒' : m.status === 'read' ? '✓✓' : '✓'}</Text>}
                 </View>
               </View>
             )}
           />
           <View style={styles.inputBar}>
-            <TouchableOpacity style={{ paddingHorizontal: 10 }} onPress={() => setNotice("Fichiers bientôt !")}><Text style={{ fontSize: 24, color: C.muted }}>📎</Text></TouchableOpacity>
+            <TouchableOpacity style={{ paddingHorizontal: 10 }} onPress={() => setNotice("Bientôt !")}><Text style={{ fontSize: 24, color: C.muted }}>📎</Text></TouchableOpacity>
             <TextInput style={styles.chatInput} placeholder="Message..." value={newMessageText} onChangeText={setNewMessageText} multiline />
             {newMessageText.trim().length > 0 ? (
               <TouchableOpacity style={styles.sendBtn} onPress={() => sendMessageToChat(chat.phone)}><Text style={{ color: C.white, fontSize: 18 }}>➤</Text></TouchableOpacity>
             ) : (
-              <TouchableOpacity style={[styles.sendBtn, { backgroundColor: C.muted }]} onPress={() => setNotice("Messages vocaux bientôt !")}><Text style={{ color: C.white, fontSize: 18 }}>🎤</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.sendBtn, { backgroundColor: C.muted }]} onPress={() => setNotice("Bientôt !")}><Text style={{ color: C.white, fontSize: 18 }}>🎤</Text></TouchableOpacity>
             )}
           </View>
         </SafeAreaView>
@@ -657,18 +546,16 @@ export default function App() {
     );
   }
 
-  // --- CONNEXION SOCIALE ---
+  // --- LOGIN SOCIAL ---
   if (screen === 'soc_login') {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Connexion Sociale" onBack={() => go('soc_auth_choice')} />
         <View style={styles.page}>
           {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Text style={styles.bodyCenter}>Entre ton email ou ton numéro pour retrouver ton compte social.</Text>
           <Field label="Email ou Téléphone" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
-          <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={loginSocial}>
-            <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
-          </TouchableOpacity>
+          <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
+          <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={loginSocial}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -697,7 +584,7 @@ export default function App() {
     );
   }
 
-  // --- ACCUEIL SOCIAL (FEED) ---
+  // --- ACCUEIL SOCIAL ---
   if (screen === 'soc_home') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -736,7 +623,7 @@ export default function App() {
     );
   }
 
-  // --- LISTE DES CHATS SOCIAL (DM) ---
+  // --- LISTE CHATS SOCIAL ---
   if (screen === 'soc_chat_list') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -747,15 +634,12 @@ export default function App() {
         </View>
         <FlatList
           data={socChats} keyExtractor={item => item.id} contentContainerStyle={{ padding: 10 }}
-          ListEmptyComponent={<Text style={styles.bodyCenter}>Aucun message privé. Cherche un ami avec 📝.</Text>}
+          ListEmptyComponent={<Text style={styles.bodyCenter}>Aucun message privé.</Text>}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.chatRow} onPress={() => { setActiveSocChatId(item.id); go('soc_chat'); }}>
               <View style={[styles.chatAvatar, { backgroundColor: C.blue }]}><Text style={styles.chatAvatarText}>{item.avatar}</Text></View>
               <View style={{ flex: 1, borderBottomWidth: 1, borderBottomColor: C.bg, paddingBottom: 15 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={styles.chatName}>{item.name}</Text>
-                  <Text style={{ fontSize: 12, color: C.muted }}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].time : ''}</Text>
-                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={styles.chatName}>{item.name}</Text><Text style={{ fontSize: 12, color: C.muted }}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].time : ''}</Text></View>
                 <Text style={styles.chatLast} numberOfLines={1}>{item.messages.length > 0 ? item.messages[item.messages.length - 1].text : 'Nouveau'}</Text>
               </View>
             </TouchableOpacity>
@@ -765,11 +649,8 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
               <Text style={styles.modalTitle}>Chercher un ami</Text>
-              <Text style={{ textAlign: 'center', color: C.muted, marginBottom: 15 }}>Trouve tes amis grâce à leur Nom public.</Text>
               <Field label="Nom / Surnom" value={socSearchName} onChangeText={setSocSearchName} placeholder="Ex: Tmd" />
-              <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={searchAndStartSocChat}>
-                <Text style={styles.buttonText}>{isLoading ? "Recherche..." : "Rechercher"}</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={searchAndStartSocChat}><Text style={styles.buttonText}>{isLoading ? "Recherche..." : "Rechercher"}</Text></TouchableOpacity>
               <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 5 }]} onPress={() => setShowNewSocChatModal(false)}><Text style={{ color: C.muted, fontWeight: 'bold' }}>Annuler</Text></TouchableOpacity>
             </View>
           </View>
@@ -778,11 +659,10 @@ export default function App() {
     );
   }
 
-  // --- CHAT SOCIAL (DM) ---
+  // --- CHAT SOCIAL ---
   if (screen === 'soc_chat') {
     const chat = socChats.find(c => c.id === activeSocChatId);
     if (!chat) return null;
-
     return (
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
@@ -793,8 +673,8 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: C.white, marginLeft: 10 }]}>{chat.name}</Text>
             </View>
             <View style={{ flexDirection: 'row', gap: 15, paddingRight: 10 }}>
-              <TouchableOpacity onPress={() => setNotice("Appel audio social bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📞</Text></TouchableOpacity>
-              <TouchableOpacity onPress={() => setNotice("Appel vidéo social bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📹</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setNotice("Bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📞</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setNotice("Bientôt !")}><Text style={{ fontSize: 20, color: C.white }}>📹</Text></TouchableOpacity>
             </View>
           </View>
           <FlatList
@@ -808,15 +688,12 @@ export default function App() {
           />
           <View style={styles.inputBar}>
             <TextInput style={styles.chatInput} placeholder="Message privé..." value={socNewMessageText} onChangeText={setSocNewMessageText} multiline />
-            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: C.blueDark }]} onPress={() => sendSocMessageToChat(chat.contact)}>
-              <Text style={{ color: C.white, fontSize: 18 }}>➤</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: C.blueDark }]} onPress={() => sendSocMessageToChat(chat.contact)}><Text style={{ color: C.white, fontSize: 18 }}>➤</Text></TouchableOpacity>
           </View>
         </SafeAreaView>
       </KeyboardAvoidingView>
     );
   }
-
   return null;
 }
 
