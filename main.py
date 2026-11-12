@@ -8,14 +8,20 @@ import os
 import random
 
 # --- CONFIGURATION DE LA BASE DE DONNÉES ---
-# 1. On récupère l'URL de Render
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
 
-# 2. LE CORRECTIF EST ICI : SQLAlchemy veut "postgresql://" et pas "postgres://"
+# 1. Correctif pour Render (postgres:// -> postgresql://)
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL)
+# 2. Création du moteur de base de données
+if "postgresql" in DATABASE_URL:
+    # pool_pre_ping évite les erreurs "SSL connection has been closed"
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
+else:
+    # Pour tes tests locaux avec SQLite
+    engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -68,32 +74,78 @@ class SocialMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     sender = relationship("UserSocial", foreign_keys=[sender_id])
 
+# Création des tables dans la base de données
 Base.metadata.create_all(bind=engine)
 
+# --- DÉPENDANCE DE SESSION ---
 def get_db():
     db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    try:
+        yield db
+    finally:
+        db.close()
 
+# --- INITIALISATION DE L'APP ---
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=False, allow_methods=["*"], allow_headers=["*"])
+
+# Configuration CORS (autorise l'application mobile à se connecter)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 otp_messaging = {}
 
-class PhoneReq(BaseModel): phone: str; country_dial: str
-class VerifyMsgReq(BaseModel): phone: str; country_dial: str; code: str; name: str; birth_date: str; password: str; avatar: str
-class SendMsgReq(BaseModel): sender_phone: str; recipient_phone: str; text: str
-class SocialReq(BaseModel): contact: str; name: str; birth_date: str; password: str; avatar: str
-class CreatePostReq(BaseModel): author_contact: str; text: str
-class SendSocialMsgReq(BaseModel): sender_contact: str; recipient_contact: str; text: str
+# --- MODÈLES PYDANTIC ---
+class PhoneReq(BaseModel):
+    phone: str
+    country_dial: str
 
-# --- NOUVELLE ROUTE POUR VÉRIFIER LA CONNEXION À LA BDD ---
+class VerifyMsgReq(BaseModel):
+    phone: str
+    country_dial: str
+    code: str
+    name: str
+    birth_date: str
+    password: str
+    avatar: str
+
+class SendMsgReq(BaseModel):
+    sender_phone: str
+    recipient_phone: str
+    text: str
+
+class SocialReq(BaseModel):
+    contact: str
+    name: str
+    birth_date: str
+    password: str
+    avatar: str
+
+class CreatePostReq(BaseModel):
+    author_contact: str
+    text: str
+
+class SendSocialMsgReq(BaseModel):
+    sender_contact: str
+    recipient_contact: str
+    text: str
+
+# ==========================================
+# ROUTES DE VÉRIFICATION
+# ==========================================
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Bienvenue sur l'API TMD Messenger"}
+
 @app.get("/debug-db")
 def debug_db(db: Session = Depends(get_db)):
     try:
         users_count = db.query(UserMessaging).count()
         social_count = db.query(UserSocial).count()
-        # On masque le mot de passe pour la sécurité
         safe_url = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else DATABASE_URL
         return {
             "status": "Connecté à la base de données !",
@@ -105,10 +157,9 @@ def debug_db(db: Session = Depends(get_db)):
     except Exception as e:
         return {"status": "Erreur de connexion", "error": str(e)}
 
-@app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Bienvenue sur l'API TMD Messenger"}
-
+# ==========================================
+# ROUTES : MESSAGERIE
+# ==========================================
 @app.post("/auth/send-otp")
 def send_otp(req: PhoneReq):
     phone_full = f"{req.country_dial}{req.phone}"
@@ -142,14 +193,17 @@ def check_phone(phone: str, db: Session = Depends(get_db)):
 def send_message(req: SendMsgReq, db: Session = Depends(get_db)):
     sender = db.query(UserMessaging).filter(UserMessaging.phone == req.sender_phone).first()
     recipient = db.query(UserMessaging).filter(UserMessaging.phone == req.recipient_phone).first()
-    if not sender or not recipient: raise HTTPException(status_code=404, detail="Numéro introuvable")
-    db.add(Message(sender_id=sender.id, recipient_id=recipient.id, text=req.text, status="sent")); db.commit()
+    if not sender or not recipient: 
+        raise HTTPException(status_code=404, detail="Numéro introuvable")
+    db.add(Message(sender_id=sender.id, recipient_id=recipient.id, text=req.text, status="sent"))
+    db.commit()
     return {"status": "sent"}
 
 @app.get("/messages/chats/{phone}")
 def get_user_chats(phone: str, db: Session = Depends(get_db)):
     user = db.query(UserMessaging).filter(UserMessaging.phone == phone).first()
-    if not user: raise HTTPException(status_code=404, detail="Introuvable")
+    if not user: 
+        raise HTTPException(status_code=404, detail="Introuvable")
     messages = db.query(Message).filter((Message.sender_id == user.id) | (Message.recipient_id == user.id)).order_by(Message.created_at.asc()).all()
     result = []
     for m in messages:
@@ -158,6 +212,9 @@ def get_user_chats(phone: str, db: Session = Depends(get_db)):
         result.append({"id": m.id, "text": m.text, "mine": is_mine, "status": m.status, "other_phone": other_user.phone, "other_name": other_user.name or other_user.phone, "other_avatar": other_user.avatar or "👤", "time": m.created_at.strftime("%H:%M")})
     return result
 
+# ==========================================
+# ROUTES : RÉSEAU SOCIAL
+# ==========================================
 @app.post("/social/register")
 def social_register(req: SocialReq, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == req.contact).first()
@@ -169,14 +226,17 @@ def social_register(req: SocialReq, db: Session = Depends(get_db)):
 @app.get("/social/check-user/{contact}")
 def check_social_user(contact: str, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == contact).first()
-    if not user: raise HTTPException(status_code=404, detail="Compte non trouvé")
+    if not user: 
+        raise HTTPException(status_code=404, detail="Compte non trouvé")
     return {"status": "found", "name": user.name, "avatar": user.avatar or "🌍"}
 
 @app.post("/social/posts")
 def create_post(req: CreatePostReq, db: Session = Depends(get_db)):
     author = db.query(UserSocial).filter(UserSocial.contact == req.author_contact).first()
-    if not author: raise HTTPException(status_code=404, detail="Auteur introuvable")
-    db.add(Post(author_id=author.id, text=req.text)); db.commit()
+    if not author: 
+        raise HTTPException(status_code=404, detail="Auteur introuvable")
+    db.add(Post(author_id=author.id, text=req.text))
+    db.commit()
     return {"status": "created"}
 
 @app.get("/social/feed")
@@ -191,22 +251,29 @@ def get_feed(db: Session = Depends(get_db)):
 @app.get("/social/search/{name}")
 def search_social_user(name: str, db: Session = Depends(get_db)):
     users = db.query(UserSocial).filter(UserSocial.name.ilike(f"%{name}%")).all()
-    if not users: raise HTTPException(status_code=404, detail="Aucun utilisateur trouvé")
+    if not users: 
+        raise HTTPException(status_code=404, detail="Aucun utilisateur trouvé")
     user = users[0]
     return {"contact": user.contact, "name": user.name, "avatar": user.avatar or "🌍"}
 
+# ==========================================
+# ROUTES : MESSAGERIE SOCIALE (DM)
+# ==========================================
 @app.post("/social/messages/send")
 def send_social_message(req: SendSocialMsgReq, db: Session = Depends(get_db)):
     sender = db.query(UserSocial).filter(UserSocial.contact == req.sender_contact).first()
     recipient = db.query(UserSocial).filter(UserSocial.contact == req.recipient_contact).first()
-    if not sender or not recipient: raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-    db.add(SocialMessage(sender_id=sender.id, recipient_id=recipient.id, text=req.text)); db.commit()
+    if not sender or not recipient: 
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    db.add(SocialMessage(sender_id=sender.id, recipient_id=recipient.id, text=req.text))
+    db.commit()
     return {"status": "sent"}
 
 @app.get("/social/messages/chats/{contact}")
 def get_social_chats(contact: str, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == contact).first()
-    if not user: raise HTTPException(status_code=404, detail="Introuvable")
+    if not user: 
+        raise HTTPException(status_code=404, detail="Introuvable")
     messages = db.query(SocialMessage).filter((SocialMessage.sender_id == user.id) | (SocialMessage.recipient_id == user.id)).order_by(SocialMessage.created_at.asc()).all()
     result = []
     for m in messages:
