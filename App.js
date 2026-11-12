@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard
+  StyleSheet, KeyboardAvoidingView, Platform, Modal, FlatList, Keyboard, ActivityIndicator
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -78,14 +78,15 @@ export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); // Nouveau : pour le bouton en bas
   
-  // --- MESSAGERIE CLASSIQUE ---
+  // --- MESSAGERIE ---
   const [account, setAccount] = useState(null);
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [msgAvatar, setMsgAvatar] = useState('👤');
   const [showNewChatModal, setShowNewChatModal] = useState(false);
-
   const [msgName, setMsgName] = useState('');
   const [msgPhone, setMsgPhone] = useState('');
   const [msgBirth, setMsgBirth] = useState('');
@@ -95,7 +96,6 @@ export default function App() {
   const [showCountries, setShowCountries] = useState(false);
   const [newMessageText, setNewMessageText] = useState('');
   const [recipientPhone, setRecipientPhone] = useState('');
-
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
 
@@ -103,14 +103,11 @@ export default function App() {
   const [socialAccount, setSocialAccount] = useState(null);
   const [feed, setFeed] = useState([]);
   const [newPostText, setNewPostText] = useState('');
-  
   const [socName, setSocName] = useState('');
   const [socContact, setSocContact] = useState('');
   const [socPassword, setSocPassword] = useState('');
   const [socBirth, setSocBirth] = useState('');
   const [socAvatar, setSocAvatar] = useState('🌍');
-
-  // --- MESSAGERIE SOCIALE (DM) ---
   const [socChats, setSocChats] = useState([]);
   const [activeSocChatId, setActiveSocChatId] = useState(null);
   const [socNewMessageText, setSocNewMessageText] = useState('');
@@ -131,6 +128,7 @@ export default function App() {
         if (savedAccount) setAccount(JSON.parse(savedAccount));
         if (savedSocial) setSocialAccount(JSON.parse(savedSocial));
       } catch (e) { console.log("Erreur session", e); }
+      finally { setIsSessionLoaded(true); }
     }
     loadSession();
   }, []);
@@ -151,10 +149,9 @@ export default function App() {
 
   async function saveAccount(acc) { setAccount(acc); await AsyncStorage.setItem('@account', JSON.stringify(acc)); }
   async function saveSocialAccount(acc) { setSocialAccount(acc); await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc)); }
-  async function logoutMessaging() { setAccount(null); await AsyncStorage.removeItem('@account'); go('welcome'); }
-  async function logoutSocial() { setSocialAccount(null); await AsyncStorage.removeItem('@socialAccount'); go('welcome'); }
+  async function logoutMessaging() { setAccount(null); await AsyncStorage.removeItem('@account'); setShowSettings(false); go('welcome'); }
+  async function logoutSocial() { setSocialAccount(null); await AsyncStorage.removeItem('@socialAccount'); setShowSettings(false); go('welcome'); }
 
-  // SCAN VISAGE
   function startFaceScan() {
     setIsScanning(true); setScanProgress(0);
     let progress = 0;
@@ -164,7 +161,6 @@ export default function App() {
     }, 300);
   }
 
-  // --- LOGIQUE MESSAGERIE ---
   async function loadChats() {
     try {
       const res = await fetch(`${API_URL}/messages/chats/${normalizePhone(account.phone)}`);
@@ -251,7 +247,6 @@ export default function App() {
     } catch (err) { setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c)); }
   }
 
-  // --- LOGIQUE SOCIAL ---
   async function loadFeed() {
     try { const res = await fetch(`${API_URL}/social/feed`); setFeed(await res.json()); } catch (err) { console.log(err); }
   }
@@ -337,6 +332,52 @@ export default function App() {
   }
 
   // ==========================================
+  // MODALE DES PARAMÈTRES (En bas)
+  // ==========================================
+  const SettingsModal = () => (
+    <Modal visible={showSettings} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
+          <Text style={styles.modalTitle}>⚙️ Paramètres du compte</Text>
+          
+          <View style={{ alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: 50 }}>{screen === 'msg_home' ? account?.avatar : socialAccount?.avatar}</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: C.dark, marginTop: 10 }}>
+              {screen === 'msg_home' ? account?.name : socialAccount?.name}
+            </Text>
+            <Text style={{ color: C.muted }}>
+              {screen === 'msg_home' ? account?.phone : socialAccount?.contact}
+            </Text>
+          </View>
+
+          <TouchableOpacity 
+            style={[styles.button, { backgroundColor: C.red, marginTop: 10 }]} 
+            onPress={screen === 'msg_home' ? logoutMessaging : logoutSocial}
+          >
+            <Text style={styles.buttonText}>Se déconnecter 🚪</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 10 }]} onPress={() => setShowSettings(false)}>
+            <Text style={{ color: C.muted, fontWeight: 'bold' }}>Fermer</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // ==========================================
+  // ÉCRAN DE CHARGEMENT
+  // ==========================================
+  if (!isSessionLoaded) {
+    return (
+      <SafeAreaView style={[styles.safe, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={C.green} />
+        <Text style={{ marginTop: 15, color: C.muted, fontSize: 16 }}>Chargement...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // ==========================================
   // INTERFACES
   // ==========================================
   if (screen === 'welcome') {
@@ -344,61 +385,43 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.hero}><View style={styles.logo}><Text style={styles.logoText}>T</Text></View><Text style={styles.brand}>TMD Messenger</Text></View>
         <View style={styles.welcomeCard}>
-          <TouchableOpacity style={styles.bigButton} onPress={() => account ? go('msg_home') : go('msg_auth_choice')}>
+          
+          <TouchableOpacity style={styles.bigButton} onPress={() => account ? go('msg_home') : go('msg_login')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
-            <View><Text style={styles.bigButtonTitle}>Messagerie</Text><Text style={styles.bigButtonSubtitle}>{account ? `Connecté: ${account.name}` : "Discussions privées"}</Text></View>
+            <View>
+              <Text style={styles.bigButtonTitle}>Messagerie</Text>
+              <Text style={styles.bigButtonSubtitle}>{account ? `Connecté: ${account.name}` : "Appuie pour te connecter"}</Text>
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => socialAccount ? go('soc_home') : go('soc_auth_choice')}>
+          
+          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => socialAccount ? go('soc_home') : go('soc_login')}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
-            <View><Text style={styles.bigButtonTitle}>Réseau Social</Text><Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté: ${socialAccount.name}` : "Partage public"}</Text></View>
+            <View>
+              <Text style={styles.bigButtonTitle}>Réseau Social</Text>
+              <Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté: ${socialAccount.name}` : "Appuie pour te connecter"}</Text>
+            </View>
           </TouchableOpacity>
+          
         </View>
       </SafeAreaView>
     );
   }
 
-  if (screen === 'msg_auth_choice') {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <Header title="Messagerie" onBack={() => go('welcome')} />
-        <View style={styles.page}>
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.bodyCenter}>Bienvenue.</Text>
-            <TouchableOpacity style={styles.button} onPress={() => go('msg_login')}><Text style={styles.buttonText}>Se connecter</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2, marginTop: 15 }]} onPress={() => go('msg_register')}><Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text></TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (screen === 'soc_auth_choice') {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <Header title="Réseau Social" onBack={() => go('welcome')} />
-        <View style={styles.page}>
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.bodyCenter}>Rejoins la communauté.</Text>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={() => go('soc_login')}><Text style={styles.buttonText}>Se connecter</Text></TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue, marginTop: 15 }]} onPress={() => go('soc_register')}><Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text></TouchableOpacity>
-          </View>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // --- LOGIN MESSAGERIE ---
+  // --- CONNEXION MESSAGERIE ---
   if (screen === 'msg_login') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Connexion Messagerie" onBack={() => go('msg_auth_choice')} />
+        <Header title="Connexion Messagerie" onBack={() => go('welcome')} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
             <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone} placeholder="620000000" keyboardType="phone-pad" />
             <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword} isPassword={true} placeholder="Ton mot de passe" />
-            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={loginMessaging}>
+            <TouchableOpacity style={[styles.button, { marginBottom: 20 }]} onPress={loginMessaging}>
               <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2 }]} onPress={() => go('msg_register')}>
+              <Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -410,7 +433,7 @@ export default function App() {
   if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Messagerie" onBack={() => go('msg_auth_choice')} />
+        <Header title="Inscription Messagerie" onBack={() => go('msg_login')} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
@@ -480,13 +503,20 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+        
+        {/* HEADER : Passerelle et Nouveau Message */}
         <View style={styles.appHeader}>
           <Text style={styles.appTitle}>TMD</Text>
-          <View style={{ flexDirection: 'row', gap: 15 }}>
-            <TouchableOpacity onPress={() => setShowNewChatModal(true)}><Text style={{ fontSize: 24 }}>📝</Text></TouchableOpacity>
-            <TouchableOpacity onPress={logoutMessaging}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 20 }}>
+            <TouchableOpacity onPress={() => socialAccount ? go('soc_home') : go('soc_login')}>
+              <Text style={{ fontSize: 24 }}>🌍</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowNewChatModal(true)}>
+              <Text style={{ fontSize: 24 }}>📝</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
         <FlatList
           data={chats} keyExtractor={item => item.id} contentContainerStyle={{ padding: 10 }}
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune discussion.</Text>}
@@ -500,6 +530,15 @@ export default function App() {
             </TouchableOpacity>
           )}
         />
+
+        {/* BOTTOM BAR : Paramètres */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowSettings(true)}>
+            <Text style={{ fontSize: 24 }}>⚙️</Text>
+            <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
+          </TouchableOpacity>
+        </View>
+
         <Modal visible={showNewChatModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
@@ -510,10 +549,13 @@ export default function App() {
             </View>
           </View>
         </Modal>
+
+        <SettingsModal />
       </SafeAreaView>
     );
   }
 
+  // --- CHAT MESSAGERIE ---
   if (screen === 'msg_chat') {
     const chat = chats.find(c => c.id === activeChatId);
     if (!chat) return null;
@@ -557,18 +599,21 @@ export default function App() {
     );
   }
 
-  // --- LOGIN SOCIAL ---
+  // --- CONNEXION SOCIALE ---
   if (screen === 'soc_login') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Connexion Sociale" onBack={() => go('soc_auth_choice')} />
+        <Header title="Connexion Sociale" onBack={() => go('welcome')} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
             <Field label="Email ou Téléphone" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
             <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={loginSocial}>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 20 }]} onPress={loginSocial}>
               <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue }]} onPress={() => go('soc_register')}>
+              <Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -580,7 +625,7 @@ export default function App() {
   if (screen === 'soc_register') {
     return (
       <SafeAreaView style={styles.safe}>
-        <Header title="Inscription Réseau Social" onBack={() => go('soc_auth_choice')} />
+        <Header title="Inscription Réseau Social" onBack={() => go('soc_login')} />
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
@@ -608,13 +653,20 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+        
+        {/* HEADER : Passerelle et Messagerie Sociale */}
         <View style={styles.appHeader}>
           <Text style={[styles.appTitle, { color: C.blueDark }]}>Social</Text>
-          <View style={{ flexDirection: 'row', gap: 15 }}>
-            <TouchableOpacity onPress={() => go('soc_chat_list')}><Text style={{ fontSize: 24 }}>✉️</Text></TouchableOpacity>
-            <TouchableOpacity onPress={logoutSocial}><Text style={{ fontSize: 24 }}>🚪</Text></TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 20 }}>
+            <TouchableOpacity onPress={() => account ? go('msg_home') : go('msg_login')}>
+              <Text style={{ fontSize: 24 }}>💬</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => go('soc_chat_list')}>
+              <Text style={{ fontSize: 24 }}>✉️</Text>
+            </TouchableOpacity>
           </View>
         </View>
+
         <FlatList
           data={feed} keyExtractor={item => item.id.toString()}
           ListHeaderComponent={
@@ -638,6 +690,16 @@ export default function App() {
           )}
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune publication.</Text>}
         />
+
+        {/* BOTTOM BAR : Paramètres */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowSettings(true)}>
+            <Text style={{ fontSize: 24 }}>⚙️</Text>
+            <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
+          </TouchableOpacity>
+        </View>
+
+        <SettingsModal />
       </SafeAreaView>
     );
   }
@@ -729,8 +791,10 @@ const styles = StyleSheet.create({
   bigButtonIcon: { fontSize: 30 },
   bigButtonTitle: { color: C.dark, fontSize: 20, fontWeight: '800', marginBottom: 4 },
   bigButtonSubtitle: { color: C.muted, fontSize: 14 },
+  
   appHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.border },
   appTitle: { fontSize: 24, fontWeight: '900', color: C.green },
+  
   header: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: C.white, borderBottomWidth: 1, borderBottomColor: C.border },
   backButton: { paddingRight: 15 },
   backText: { fontSize: 34, color: C.green, lineHeight: 38, marginTop: -5 },
@@ -744,20 +808,34 @@ const styles = StyleSheet.create({
   bodyCenter: { color: C.muted, fontSize: 15, textAlign: 'center', marginBottom: 20, marginTop: 20 },
   select: { backgroundColor: C.white, borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 15, marginBottom: 15 },
   selectText: { color: C.dark, fontSize: 16 },
+  
   chatRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, padding: 10, marginBottom: 2 },
   chatAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   chatAvatarText: { fontSize: 24 },
   chatName: { color: C.dark, fontSize: 16, fontWeight: '700', marginBottom: 4 },
   chatLast: { color: C.muted, fontSize: 14 },
   chatAvatarSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
+  
   inputBar: { flexDirection: 'row', padding: 10, backgroundColor: C.white, alignItems: 'center' },
   chatInput: { flex: 1, backgroundColor: C.bg, borderRadius: 20, paddingHorizontal: 15, paddingTop: 10, paddingBottom: 10, maxHeight: 100, fontSize: 16 },
   sendBtn: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginLeft: 10 },
+  
   postCard: { backgroundColor: C.white, padding: 15, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: C.border },
+  
   avatarRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   avatarOption: { width: 50, height: 50, borderRadius: 25, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.border },
   avatarOptionSelected: { borderColor: C.green, backgroundColor: C.green2 },
   avatarOptionText: { fontSize: 24 },
+
+  // Nouveaux styles
+  bottomBar: { 
+    backgroundColor: C.white, 
+    borderTopWidth: 1, 
+    borderTopColor: C.border, 
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center' },
   modalCard: { backgroundColor: C.white, padding: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800', color: C.dark, marginBottom: 15, textAlign: 'center' },
