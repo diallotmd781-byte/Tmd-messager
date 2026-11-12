@@ -10,16 +10,18 @@ import random
 # --- CONFIGURATION DE LA BASE DE DONNÉES ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
 
-# 1. Correctif pour Render (postgres:// -> postgresql://)
+# 1. Correction du préfixe pour Render
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# 2. Création du moteur de base de données
+# 2. FORCER l'utilisation de psycopg2 (sinon SQLAlchemy cherche psycopg v3 et plante)
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+# 3. Création du moteur avec pool_pre_ping pour éviter les déconnexions Render
 if "postgresql" in DATABASE_URL:
-    # pool_pre_ping évite les erreurs "SSL connection has been closed"
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
 else:
-    # Pour tes tests locaux avec SQLite
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -88,7 +90,7 @@ def get_db():
 # --- INITIALISATION DE L'APP ---
 app = FastAPI()
 
-# Configuration CORS (autorise l'application mobile à se connecter)
+# Configuration CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -187,7 +189,7 @@ def check_phone(phone: str, db: Session = Depends(get_db)):
     user = db.query(UserMessaging).filter(UserMessaging.phone.endswith(phone)).first()
     if not user:
         raise HTTPException(status_code=404, detail="Numéro non trouvé")
-    return {"status": "found", "phone": user.phone, "name": user.name, "avatar": user.avatar or "👤", "country_dial": user.country_dial}
+    return {"status": "found", "phone": user-user.phone, "name": user.name, "avatar": user.avatar or "👤", "country_dial": user.country_dial}
 
 @app.post("/messages/send")
 def send_message(req: SendMsgReq, db: Session = Depends(get_db)):
@@ -223,7 +225,7 @@ def social_register(req: SocialReq, db: Session = Depends(get_db)):
         db.commit()
     return {"status": "created"}
 
-@app.get("/social/check-user/{contact}")
+@app.get("/social/check/{contact}")
 def check_social_user(contact: str, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == contact).first()
     if not user: 
