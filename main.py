@@ -9,7 +9,6 @@ import random
 
 # --- CONFIGURATION DE LA BASE DE DONNÉES ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
-
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 if DATABASE_URL.startswith("postgresql://"):
@@ -60,6 +59,15 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey("users_social.id"))
     text = Column(Text, nullable=False)
+    likes = Column(Integer, default=0) # NOUVEAU : Compteur de likes
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Comment(Base):
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey("posts.id"))
+    author_id = Column(Integer, ForeignKey("users_social.id"))
+    text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class SocialMessage(Base):
@@ -92,6 +100,7 @@ class SendMsgReq(BaseModel): sender_phone: str; recipient_phone: str; text: str
 class SocialReq(BaseModel): contact: str; name: str; birth_date: str; password: str; avatar: str
 class LoginSocialReq(BaseModel): contact: str; password: str
 class CreatePostReq(BaseModel): author_contact: str; text: str
+class CreateCommentReq(BaseModel): author_contact: str; text: str
 class SendSocialMsgReq(BaseModel): sender_contact: str; recipient_contact: str; text: str
 
 # ==========================================
@@ -104,12 +113,7 @@ def read_root():
 @app.get("/debug-db")
 def debug_db(db: Session = Depends(get_db)):
     try:
-        return {
-            "status": "Connecté",
-            "utilisateurs_messagerie": db.query(UserMessaging).count(),
-            "utilisateurs_social": db.query(UserSocial).count(),
-            "utilise_sqlite": "sqlite" in DATABASE_URL
-        }
+        return {"status": "Connecté", "utilisateurs_messagerie": db.query(UserMessaging).count(), "utilisateurs_social": db.query(UserSocial).count(), "utilise_sqlite": "sqlite" in DATABASE_URL}
     except Exception as e:
         return {"error": str(e)}
 
@@ -139,15 +143,9 @@ def verify_otp(req: VerifyMsgReq, db: Session = Depends(get_db)):
 
 @app.post("/auth/login")
 def login_messaging(req: LoginReq, db: Session = Depends(get_db)):
-    # On cherche l'utilisateur par la fin de son numéro
     user = db.query(UserMessaging).filter(UserMessaging.phone.endswith(req.phone)).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Numéro non trouvé")
-    
-    # On vérifie le mot de passe (req.password contient déjà le hash envoyé par le frontend)
-    if user.password_hash != req.password:
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
-        
+    if not user: raise HTTPException(status_code=404, detail="Numéro non trouvé")
+    if user.password_hash != req.password: raise HTTPException(status_code=401, detail="Mot de passe incorrect")
     return {"status": "success", "phone": user.phone, "name": user.name, "avatar": user.avatar or "👤", "country_dial": user.country_dial}
 
 @app.post("/messages/send")
@@ -171,7 +169,7 @@ def get_user_chats(phone: str, db: Session = Depends(get_db)):
     return result
 
 # ==========================================
-# ROUTES : RÉSEAU SOCIAL
+# ROUTES : RÉSEAU SOCIAL (Avec Likes & Comments)
 # ==========================================
 @app.post("/social/register")
 def social_register(req: SocialReq, db: Session = Depends(get_db)):
@@ -184,12 +182,8 @@ def social_register(req: SocialReq, db: Session = Depends(get_db)):
 @app.post("/social/login")
 def login_social(req: LoginSocialReq, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == req.contact).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Compte non trouvé")
-    
-    if user.password_hash != req.password:
-        raise HTTPException(status_code=401, detail="Mot de passe incorrect")
-        
+    if not user: raise HTTPException(status_code=404, detail="Compte non trouvé")
+    if user.password_hash != req.password: raise HTTPException(status_code=401, detail="Mot de passe incorrect")
     return {"status": "success", "name": user.name, "avatar": user.avatar or "🌍"}
 
 @app.post("/social/posts")
@@ -205,9 +199,37 @@ def get_feed(db: Session = Depends(get_db)):
     result = []
     for p in posts:
         author = db.query(UserSocial).filter(UserSocial.id == p.author_id).first()
-        result.append({"id": p.id, "text": p.text, "author_name": author.name if author else "Inconnu", "author_avatar": author.avatar if author else "🌍", "created_at": p.created_at.strftime("%H:%M")})
+        comments_count = db.query(Comment).filter(Comment.post_id == p.id).count()
+        result.append({
+            "id": p.id, 
+            "text": p.text, 
+            "author_name": author.name if author else "Inconnu", 
+            "author_avatar": author.avatar if author else "🌍", 
+            "created_at": p.created_at.strftime("%H:%M"),
+            "likes": p.likes,
+            "comments_count": comments_count
+        })
     return result
 
+@app.post("/social/posts/{post_id}/like")
+def like_post(post_id: int, db: Session = Depends(get_db)):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post: raise HTTPException(status_code=404, detail="Post introuvable")
+    post.likes += 1
+    db.commit()
+    return {"status": "liked", "likes": post.likes}
+
+@app.post("/social/posts/{post_id}/comment")
+def add_comment(post_id: int, req: CreateCommentReq, db: Session = Depends(get_db)):
+    author = db.query(UserSocial).filter(UserSocial.contact == req.author_contact).first()
+    if not author: raise HTTPException(status_code=404, detail="Auteur introuvable")
+    new_comment = Comment(post_id=post_id, author_id=author.id, text=req.text)
+    db.add(new_comment); db.commit()
+    return {"status": "commented"}
+
+# ==========================================
+# ROUTES : MESSAGERIE SOCIALE (DM)
+# ==========================================
 @app.get("/social/search/{name}")
 def search_social_user(name: str, db: Session = Depends(get_db)):
     users = db.query(UserSocial).filter(UserSocial.name.ilike(f"%{name}%")).all()
