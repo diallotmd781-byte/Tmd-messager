@@ -7,7 +7,6 @@ from datetime import datetime
 import os
 import random
 
-# --- CONFIGURATION DE LA BASE DE DONNÉES ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db") 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -22,7 +21,7 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# --- MODÈLES DE DONNÉES ---
+# --- MODÈLES ---
 class UserMessaging(Base):
     __tablename__ = "users_messaging"
     id = Column(Integer, primary_key=True, index=True)
@@ -59,7 +58,7 @@ class Post(Base):
     id = Column(Integer, primary_key=True, index=True)
     author_id = Column(Integer, ForeignKey("users_social.id"))
     text = Column(Text, nullable=False)
-    likes = Column(Integer, default=0) # NOUVEAU : Compteur de likes
+    likes = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Comment(Base):
@@ -96,6 +95,7 @@ class PhoneReq(BaseModel): phone: str; country_dial: str
 class VerifyMsgReq(BaseModel): phone: str; country_dial: str; code: str; name: str; birth_date: str; password: str; avatar: str
 class LoginReq(BaseModel): phone: str; password: str
 class SendMsgReq(BaseModel): sender_phone: str; recipient_phone: str; text: str
+class UpdateProfileReq(BaseModel): phone: str = None; contact: str = None; name: str; avatar: str
 
 class SocialReq(BaseModel): contact: str; name: str; birth_date: str; password: str; avatar: str
 class LoginSocialReq(BaseModel): contact: str; password: str
@@ -103,12 +103,9 @@ class CreatePostReq(BaseModel): author_contact: str; text: str
 class CreateCommentReq(BaseModel): author_contact: str; text: str
 class SendSocialMsgReq(BaseModel): sender_contact: str; recipient_contact: str; text: str
 
-# ==========================================
-# ROUTES DE VÉRIFICATION
-# ==========================================
+# --- ROUTES GÉNÉRALES ---
 @app.get("/")
-def read_root():
-    return {"status": "ok", "message": "Bienvenue sur l'API TMD Messenger"}
+def read_root(): return {"status": "ok", "message": "Bienvenue sur l'API TMD Messenger"}
 
 @app.get("/debug-db")
 def debug_db(db: Session = Depends(get_db)):
@@ -117,13 +114,10 @@ def debug_db(db: Session = Depends(get_db)):
     except Exception as e:
         return {"error": str(e)}
 
-# ==========================================
-# ROUTES : MESSAGERIE
-# ==========================================
+# --- MESSAGERIE ---
 @app.post("/auth/send-otp")
 def send_otp(req: PhoneReq):
-    phone_full = f"{req.country_dial}{req.phone}"
-    otp_messaging[phone_full] = str(random.randint(100000, 999999))
+    otp_messaging[f"{req.country_dial}{req.phone}"] = str(random.randint(100000, 999999))
     return {"status": "sent"}
 
 @app.post("/auth/verify-otp")
@@ -148,6 +142,14 @@ def login_messaging(req: LoginReq, db: Session = Depends(get_db)):
     if user.password_hash != req.password: raise HTTPException(status_code=401, detail="Mot de passe incorrect")
     return {"status": "success", "phone": user.phone, "name": user.name, "avatar": user.avatar or "👤", "country_dial": user.country_dial}
 
+@app.put("/auth/update-profile")
+def update_profile_messaging(req: UpdateProfileReq, db: Session = Depends(get_db)):
+    user = db.query(UserMessaging).filter(UserMessaging.phone == req.phone).first()
+    if not user: raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    user.name, user.avatar = req.name, req.avatar
+    db.commit()
+    return {"status": "updated"}
+
 @app.post("/messages/send")
 def send_message(req: SendMsgReq, db: Session = Depends(get_db)):
     sender = db.query(UserMessaging).filter(UserMessaging.phone == req.sender_phone).first()
@@ -168,9 +170,7 @@ def get_user_chats(phone: str, db: Session = Depends(get_db)):
         result.append({"id": m.id, "text": m.text, "mine": is_mine, "status": m.status, "other_phone": other_user.phone, "other_name": other_user.name or other_user.phone, "other_avatar": other_user.avatar or "👤", "time": m.created_at.strftime("%H:%M")})
     return result
 
-# ==========================================
-# ROUTES : RÉSEAU SOCIAL (Avec Likes & Comments)
-# ==========================================
+# --- SOCIAL ---
 @app.post("/social/register")
 def social_register(req: SocialReq, db: Session = Depends(get_db)):
     user = db.query(UserSocial).filter(UserSocial.contact == req.contact).first()
@@ -185,6 +185,14 @@ def login_social(req: LoginSocialReq, db: Session = Depends(get_db)):
     if not user: raise HTTPException(status_code=404, detail="Compte non trouvé")
     if user.password_hash != req.password: raise HTTPException(status_code=401, detail="Mot de passe incorrect")
     return {"status": "success", "name": user.name, "avatar": user.avatar or "🌍"}
+
+@app.put("/social/update-profile")
+def update_profile_social(req: UpdateProfileReq, db: Session = Depends(get_db)):
+    user = db.query(UserSocial).filter(UserSocial.contact == req.contact).first()
+    if not user: raise HTTPException(status_code=404, detail="Compte introuvable")
+    user.name, user.avatar = req.name, req.avatar
+    db.commit()
+    return {"status": "updated"}
 
 @app.post("/social/posts")
 def create_post(req: CreatePostReq, db: Session = Depends(get_db)):
@@ -201,13 +209,9 @@ def get_feed(db: Session = Depends(get_db)):
         author = db.query(UserSocial).filter(UserSocial.id == p.author_id).first()
         comments_count = db.query(Comment).filter(Comment.post_id == p.id).count()
         result.append({
-            "id": p.id, 
-            "text": p.text, 
-            "author_name": author.name if author else "Inconnu", 
-            "author_avatar": author.avatar if author else "🌍", 
-            "created_at": p.created_at.strftime("%H:%M"),
-            "likes": p.likes,
-            "comments_count": comments_count
+            "id": p.id, "text": p.text, "author_name": author.name if author else "Inconnu", 
+            "author_avatar": author.avatar if author else "🌍", "created_at": p.created_at.strftime("%H:%M"),
+            "likes": p.likes, "comments_count": comments_count
         })
     return result
 
@@ -215,21 +219,16 @@ def get_feed(db: Session = Depends(get_db)):
 def like_post(post_id: int, db: Session = Depends(get_db)):
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post: raise HTTPException(status_code=404, detail="Post introuvable")
-    post.likes += 1
-    db.commit()
+    post.likes += 1; db.commit()
     return {"status": "liked", "likes": post.likes}
 
 @app.post("/social/posts/{post_id}/comment")
 def add_comment(post_id: int, req: CreateCommentReq, db: Session = Depends(get_db)):
     author = db.query(UserSocial).filter(UserSocial.contact == req.author_contact).first()
     if not author: raise HTTPException(status_code=404, detail="Auteur introuvable")
-    new_comment = Comment(post_id=post_id, author_id=author.id, text=req.text)
-    db.add(new_comment); db.commit()
+    db.add(Comment(post_id=post_id, author_id=author.id, text=req.text)); db.commit()
     return {"status": "commented"}
 
-# ==========================================
-# ROUTES : MESSAGERIE SOCIALE (DM)
-# ==========================================
 @app.get("/social/search/{name}")
 def search_social_user(name: str, db: Session = Depends(get_db)):
     users = db.query(UserSocial).filter(UserSocial.name.ilike(f"%{name}%")).all()
