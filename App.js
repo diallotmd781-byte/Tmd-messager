@@ -74,12 +74,24 @@ function Header({ title, onBack }) {
   );
 }
 
+// Composant pour les lignes du menu Paramètres
+const SettingItem = ({ icon, title, subtitle, onPress }) => (
+  <TouchableOpacity style={styles.settingItem} onPress={onPress}>
+    <Text style={{ fontSize: 24, marginRight: 15 }}>{icon}</Text>
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontSize: 16, color: C.dark, fontWeight: '600' }}>{title}</Text>
+      {subtitle && <Text style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{subtitle}</Text>}
+    </View>
+    <Text style={{ color: C.muted, fontSize: 20 }}>›</Text>
+  </TouchableOpacity>
+);
+
 export default function App() {
   const [screen, setScreen] = useState('welcome');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSessionLoaded, setIsSessionLoaded] = useState(false);
-  const [showSettings, setShowSettings] = useState(false); // Nouveau : pour le bouton en bas
+  const [showSettings, setShowSettings] = useState(false); 
   
   // --- MESSAGERIE ---
   const [account, setAccount] = useState(null);
@@ -145,7 +157,21 @@ export default function App() {
     if (screen === 'soc_chat_list' && socialAccount) loadSocChats();
   }, [screen, account, socialAccount]);
 
-  function go(next) { Keyboard.dismiss(); setNotice(''); setScreen(next); }
+  function go(next) {
+    if (next === 'msg_home' && !account) {
+      setScreen('msg_login');
+      setNotice("Tu dois d'abord créer ou te connecter à un compte Messagerie.");
+      return;
+    }
+    if (next === 'soc_home' && !socialAccount) {
+      setScreen('soc_login');
+      setNotice("Tu dois d'abord créer ou te connecter à un compte Réseau Social.");
+      return;
+    }
+    Keyboard.dismiss(); 
+    setNotice(''); 
+    setScreen(next);
+  }
 
   async function saveAccount(acc) { setAccount(acc); await AsyncStorage.setItem('@account', JSON.stringify(acc)); }
   async function saveSocialAccount(acc) { setSocialAccount(acc); await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc)); }
@@ -332,38 +358,57 @@ export default function App() {
   }
 
   // ==========================================
-  // MODALE DES PARAMÈTRES (En bas)
+  // NOUVEL ÉCRAN DE PARAMÈTRES COMPLET
   // ==========================================
-  const SettingsModal = () => (
-    <Modal visible={showSettings} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
-          <Text style={styles.modalTitle}>⚙️ Paramètres du compte</Text>
-          
-          <View style={{ alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 50 }}>{screen === 'msg_home' ? account?.avatar : socialAccount?.avatar}</Text>
-            <Text style={{ fontSize: 20, fontWeight: 'bold', color: C.dark, marginTop: 10 }}>
-              {screen === 'msg_home' ? account?.name : socialAccount?.name}
-            </Text>
-            <Text style={{ color: C.muted }}>
-              {screen === 'msg_home' ? account?.phone : socialAccount?.contact}
-            </Text>
+  const SettingsModal = () => {
+    const isMsg = screen === 'msg_home';
+    const currentAcc = isMsg ? account : socialAccount;
+
+    return (
+      <Modal visible={showSettings} animationType="slide">
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.appHeader}>
+            <Text style={styles.appTitle}>Paramètres</Text>
+            <TouchableOpacity onPress={() => setShowSettings(false)}>
+              <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity 
-            style={[styles.button, { backgroundColor: C.red, marginTop: 10 }]} 
-            onPress={screen === 'msg_home' ? logoutMessaging : logoutSocial}
-          >
-            <Text style={styles.buttonText}>Se déconnecter 🚪</Text>
-          </TouchableOpacity>
+          <ScrollView>
+            {/* BLOC PROFIL */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35 }]}>
+                <Text style={{ fontSize: 40 }}>{currentAcc?.avatar || '👤'}</Text>
+              </View>
+              <View style={{ marginLeft: 15 }}>
+                <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{currentAcc?.name}</Text>
+                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>
+                  {isMsg ? currentAcc?.phone : currentAcc?.contact}
+                </Text>
+              </View>
+            </View>
 
-          <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 10 }]} onPress={() => setShowSettings(false)}>
-            <Text style={{ color: C.muted, fontWeight: 'bold' }}>Fermer</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+            {/* MENU */}
+            <View style={{ padding: 10 }}>
+              <SettingItem icon="👤" title="Profil" subtitle="Ton nom, ton avatar" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="🔒" title="Confidentialité" subtitle="Bloqués, codes de sécurité" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="🔔" title="Notifications" subtitle="Messages, groupes, sons" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="💾" title="Stockage et données" subtitle="Utilisation du réseau" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="ℹ️" title="Aide et support" subtitle="Centre d'aide, contact" onPress={() => setNotice("Bientôt disponible !")} />
+            </View>
+
+            {/* DÉCONNEXION */}
+            <TouchableOpacity 
+              style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} 
+              onPress={isMsg ? logoutMessaging : logoutSocial}
+            >
+              <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
 
   // ==========================================
   // ÉCRAN DE CHARGEMENT
@@ -386,7 +431,7 @@ export default function App() {
         <View style={styles.hero}><View style={styles.logo}><Text style={styles.logoText}>T</Text></View><Text style={styles.brand}>TMD Messenger</Text></View>
         <View style={styles.welcomeCard}>
           
-          <TouchableOpacity style={styles.bigButton} onPress={() => account ? go('msg_home') : go('msg_login')}>
+          <TouchableOpacity style={styles.bigButton} onPress={() => go('msg_home')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
             <View>
               <Text style={styles.bigButtonTitle}>Messagerie</Text>
@@ -394,7 +439,7 @@ export default function App() {
             </View>
           </TouchableOpacity>
           
-          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => socialAccount ? go('soc_home') : go('soc_login')}>
+          <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => go('soc_home')}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
             <View>
               <Text style={styles.bigButtonTitle}>Réseau Social</Text>
@@ -504,11 +549,10 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
         
-        {/* HEADER : Passerelle et Nouveau Message */}
         <View style={styles.appHeader}>
           <Text style={styles.appTitle}>TMD</Text>
           <View style={{ flexDirection: 'row', gap: 20 }}>
-            <TouchableOpacity onPress={() => socialAccount ? go('soc_home') : go('soc_login')}>
+            <TouchableOpacity onPress={() => go('soc_home')}>
               <Text style={{ fontSize: 24 }}>🌍</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowNewChatModal(true)}>
@@ -531,7 +575,6 @@ export default function App() {
           )}
         />
 
-        {/* BOTTOM BAR : Paramètres */}
         <View style={styles.bottomBar}>
           <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowSettings(true)}>
             <Text style={{ fontSize: 24 }}>⚙️</Text>
@@ -654,11 +697,10 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
         
-        {/* HEADER : Passerelle et Messagerie Sociale */}
         <View style={styles.appHeader}>
           <Text style={[styles.appTitle, { color: C.blueDark }]}>Social</Text>
           <View style={{ flexDirection: 'row', gap: 20 }}>
-            <TouchableOpacity onPress={() => account ? go('msg_home') : go('msg_login')}>
+            <TouchableOpacity onPress={() => go('msg_home')}>
               <Text style={{ fontSize: 24 }}>💬</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => go('soc_chat_list')}>
@@ -691,7 +733,6 @@ export default function App() {
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune publication.</Text>}
         />
 
-        {/* BOTTOM BAR : Paramètres */}
         <View style={styles.bottomBar}>
           <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowSettings(true)}>
             <Text style={{ fontSize: 24 }}>⚙️</Text>
@@ -827,7 +868,6 @@ const styles = StyleSheet.create({
   avatarOptionSelected: { borderColor: C.green, backgroundColor: C.green2 },
   avatarOptionText: { fontSize: 24 },
 
-  // Nouveaux styles
   bottomBar: { 
     backgroundColor: C.white, 
     borderTopWidth: 1, 
@@ -835,6 +875,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center'
+  },
+  // Styles pour le menu Paramètres
+  settingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0'
   },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center' },
   modalCard: { backgroundColor: C.white, padding: 20 },
