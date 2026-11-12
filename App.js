@@ -53,16 +53,9 @@ function Field({ label, value, onChangeText, placeholder, isPassword = false, ke
       {!!label && <Text style={styles.label}>{label}</Text>}
       <View style={[styles.input, { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 0 }]}>
         <TextInput 
-          value={value} 
-          onChangeText={onChangeText} 
-          placeholder={placeholder} 
-          placeholderTextColor="#9AA59F" 
-          secureTextEntry={isPassword && !showPassword} 
-          keyboardType={keyboardType} 
-          maxLength={maxLength}
-          autoCapitalize="none" 
-          autoCorrect={false} 
-          style={{ flex: 1, paddingHorizontal: 14, color: C.dark, fontSize: 16, height: '100%' }} 
+          value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9AA59F" 
+          secureTextEntry={isPassword && !showPassword} keyboardType={keyboardType} maxLength={maxLength}
+          autoCapitalize="none" autoCorrect={false} style={{ flex: 1, paddingHorizontal: 14, color: C.dark, fontSize: 16, height: '100%' }} 
         />
         {isPassword && (
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ padding: 14 }}>
@@ -74,14 +67,12 @@ function Field({ label, value, onChangeText, placeholder, isPassword = false, ke
   );
 }
 
-function Header({ title, onBack }) {
+function Header({ title, onBack, right }) {
   return (
     <View style={styles.header}>
-      <TouchableOpacity onPress={onBack} style={styles.backButton}>
-        <Text style={styles.backText}>‹</Text>
-      </TouchableOpacity>
+      <TouchableOpacity onPress={onBack} style={styles.backButton}><Text style={styles.backText}>‹</Text></TouchableOpacity>
       <Text style={styles.headerTitle}>{title}</Text>
-      <View style={{ width: 35 }} />
+      {right || <View style={{ width: 35 }} />}
     </View>
   );
 }
@@ -104,8 +95,8 @@ export default function App() {
   const [isSessionLoaded, setIsSessionLoaded] = useState(false);
   
   // --- ÉTATS PARAMÈTRES ---
-  const [showSettings, setShowSettings] = useState(false); 
-  const [settingsScreen, setSettingsScreen] = useState('main'); 
+  const [settingsTab, setSettingsTab] = useState('main'); // 'main', 'profile', 'privacy', 'notifications', 'about'
+  const [returnScreen, setReturnScreen] = useState('msg_home'); // Pour savoir d'où on vient
   
   const [editName, setEditName] = useState('');
   const [editAvatar, setEditAvatar] = useState('');
@@ -193,39 +184,38 @@ export default function App() {
     Keyboard.dismiss(); setNotice(''); setScreen(next);
   }
 
+  function openSettings(fromScreen) {
+    setReturnScreen(fromScreen);
+    setEditName(fromScreen === 'msg_home' ? account?.name : socialAccount?.name);
+    setEditAvatar(fromScreen === 'msg_home' ? account?.avatar : socialAccount?.avatar);
+    setSettingsTab('main');
+    setScreen('settings');
+  }
+
   async function saveAccount(acc) { setAccount(acc); await AsyncStorage.setItem('@account', JSON.stringify(acc)); }
   async function saveSocialAccount(acc) { setSocialAccount(acc); await AsyncStorage.setItem('@socialAccount', JSON.stringify(acc)); }
-  async function logoutMessaging() { setAccount(null); await AsyncStorage.removeItem('@account'); setShowSettings(false); setSettingsScreen('main'); go('welcome'); }
-  async function logoutSocial() { setSocialAccount(null); await AsyncStorage.removeItem('@socialAccount'); setShowSettings(false); setSettingsScreen('main'); go('welcome'); }
-
-  function openSettings() {
-    setEditName(screen === 'msg_home' ? account?.name : socialAccount?.name);
-    setEditAvatar(screen === 'msg_home' ? account?.avatar : socialAccount?.avatar);
-    setSettingsScreen('main');
-    setShowSettings(true);
-  }
+  async function logoutMessaging() { setAccount(null); await AsyncStorage.removeItem('@account'); go('welcome'); }
+  async function logoutSocial() { setSocialAccount(null); await AsyncStorage.removeItem('@socialAccount'); go('welcome'); }
 
   async function updateProfile() {
     if (!editName.trim()) return setNotice("Le nom ne peut pas être vide.");
     setIsLoading(true);
     try {
-      if (screen === 'msg_home') {
+      if (returnScreen === 'msg_home') {
         await fetch(`${API_URL}/auth/update-profile`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: account.phone, name: editName, avatar: editAvatar })
         });
-        const updatedAcc = { ...account, name: editName, avatar: editAvatar };
-        await saveAccount(updatedAcc);
+        await saveAccount({ ...account, name: editName, avatar: editAvatar });
       } else {
         await fetch(`${API_URL}/social/update-profile`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contact: socialAccount.contact, name: editName, avatar: editAvatar })
         });
-        const updatedSoc = { ...socialAccount, name: editName, avatar: editAvatar };
-        await saveSocialAccount(updatedSoc);
+        await saveSocialAccount({ ...socialAccount, name: editName, avatar: editAvatar });
       }
       setNotice("Profil mis à jour !");
-      setSettingsScreen('main');
+      setSettingsTab('main');
     } catch (err) {
       setNotice("Erreur de mise à jour.");
     } finally {
@@ -340,126 +330,120 @@ export default function App() {
   }
 
   // ==========================================
-  // RENDU DES PARAMÈTRES
+  // ÉCRAN DE PARAMÈTRES (SÉCURISÉ)
   // ==========================================
-  const renderSettingsContent = () => {
-    const isMsg = screen === 'msg_home';
+  if (screen === 'settings') {
+    const isMsg = returnScreen === 'msg_home';
     const currentAcc = isMsg ? account : socialAccount;
     const themeColor = isMsg ? C.green : C.blueDark;
 
-    if (settingsScreen === 'main') {
-      return (
-        <ScrollView>
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
-            <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35, backgroundColor: isMsg ? C.green2 : C.blue }]}>
-              <Text style={{ fontSize: 40 }}>{currentAcc?.avatar || '👤'}</Text>
+    const renderContent = () => {
+      if (settingsTab === 'main') {
+        return (
+          <ScrollView>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35, backgroundColor: isMsg ? C.green2 : C.blue }]}>
+                <Text style={{ fontSize: 40 }}>{currentAcc?.avatar || '👤'}</Text>
+              </View>
+              <View style={{ marginLeft: 15 }}>
+                <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{currentAcc?.name}</Text>
+                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>{isMsg ? currentAcc?.phone : "Compte Public"}</Text>
+              </View>
             </View>
-            <View style={{ marginLeft: 15 }}>
-              <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{currentAcc?.name}</Text>
-              <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>{isMsg ? currentAcc?.phone : "Compte Public"}</Text>
+            <View style={{ padding: 10 }}>
+              <SettingItem icon="👤" title={isMsg ? "Profil" : "Mon compte"} subtitle="Nom, avatar" onPress={() => setSettingsTab('profile')} />
+              <SettingItem icon="🔒" title="Confidentialité" subtitle="Sécurité" onPress={() => setSettingsTab('privacy')} />
+              <SettingItem icon="🔔" title="Notifications" subtitle="Alertes" onPress={() => setSettingsTab('notifications')} />
+              <SettingItem icon="ℹ️" title="À propos" subtitle="Version 1.0.0" onPress={() => setSettingsTab('about')} />
             </View>
+            <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={isMsg ? logoutMessaging : logoutSocial}>
+              <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        );
+      }
+      if (settingsTab === 'profile') {
+        return (
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <Text style={styles.label}>Choisir un avatar</Text>
+            <View style={styles.avatarRow}>
+              {(isMsg ? ['👤', '😎', '👩', '🧑', '🦁'] : ['🌍', '🦄', '🐯', '🎨', '🎧', '🚀']).map(a => (
+                <TouchableOpacity key={a} style={[styles.avatarOption, editAvatar === a && { borderColor: themeColor, backgroundColor: isMsg ? C.green2 : C.blue }]} onPress={() => setEditAvatar(a)}>
+                  <Text style={styles.avatarOptionText}>{a}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Field label="Nom" value={editName} onChangeText={setEditName} placeholder="Ton nom" />
+            <TouchableOpacity style={[styles.button, { backgroundColor: themeColor, marginTop: 20 }]} onPress={updateProfile}>
+              <Text style={styles.buttonText}>{isLoading ? "Sauvegarde..." : "Enregistrer"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        );
+      }
+      if (settingsTab === 'privacy') {
+        return (
+          <ScrollView>
+            <View style={{ padding: 20 }}>
+              <View style={styles.settingRow}>
+                <View><Text style={{ fontSize: 16, color: C.dark }}>Vu(e) récemment</Text><Text style={{ fontSize: 12, color: C.muted }}>Statut en ligne</Text></View>
+                <Switch value={privacyLastSeen} onValueChange={setPrivacyLastSeen} trackColor={{ true: themeColor }} />
+              </View>
+              <View style={styles.settingRow}>
+                <View><Text style={{ fontSize: 16, color: C.dark }}>Confirmations de lecture</Text><Text style={{ fontSize: 12, color: C.muted }}>Doubles coches</Text></View>
+                <Switch value={privacyReadReceipts} onValueChange={setPrivacyReadReceipts} trackColor={{ true: themeColor }} />
+              </View>
+            </View>
+          </ScrollView>
+        );
+      }
+      if (settingsTab === 'notifications') {
+        return (
+          <ScrollView>
+            <View style={{ padding: 20 }}>
+              <View style={styles.settingRow}>
+                <View><Text style={{ fontSize: 16, color: C.dark }}>Messages</Text><Text style={{ fontSize: 12, color: C.muted }}>Alertes</Text></View>
+                <Switch value={notifMessages} onValueChange={setNotifMessages} trackColor={{ true: themeColor }} />
+              </View>
+              <View style={styles.settingRow}>
+                <View><Text style={{ fontSize: 16, color: C.dark }}>Réseau Social</Text><Text style={{ fontSize: 12, color: C.muted }}>Likes et commentaires</Text></View>
+                <Switch value={notifSocial} onValueChange={setNotifSocial} trackColor={{ true: themeColor }} />
+              </View>
+            </View>
+          </ScrollView>
+        );
+      }
+      if (settingsTab === 'about') {
+        return (
+          <View style={{ padding: 20, alignItems: 'center', marginTop: 50 }}>
+            <Text style={{ fontSize: 60, marginBottom: 20 }}>T</Text>
+            <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>TMD Messenger</Text>
+            <Text style={{ color: C.muted, marginTop: 10, marginBottom: 40 }}>Version 1.0.0 (Bêta)</Text>
+            <Text style={{ textAlign: 'center', color: C.muted, lineHeight: 20 }}>Conçu pour la Guinée, l'Afrique et le monde.{"\n"}Sécurisé, rapide et 100% indépendant.</Text>
           </View>
-          <View style={{ padding: 10 }}>
-            <SettingItem icon="👤" title={isMsg ? "Profil" : "Mon compte"} subtitle="Nom, avatar" onPress={() => setSettingsScreen('profile')} />
-            <SettingItem icon="🔒" title="Confidentialité" subtitle="Sécurité" onPress={() => setSettingsScreen('privacy')} />
-            <SettingItem icon="🔔" title="Notifications" subtitle="Alertes" onPress={() => setSettingsScreen('notifications')} />
-            <SettingItem icon="ℹ️" title="À propos" subtitle="Version 1.0.0" onPress={() => setSettingsScreen('about')} />
-          </View>
-          <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={isMsg ? logoutMessaging : logoutSocial}>
-            <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      );
-    }
+        );
+      }
+      return null;
+    };
 
-    if (settingsScreen === 'profile') {
-      return (
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
-          <Text style={styles.label}>Choisir un avatar</Text>
-          <View style={styles.avatarRow}>
-            {(isMsg ? ['👤', '😎', '👩', '🧑', '🦁'] : ['🌍', '🦄', '🐯', '🎨', '🎧', '🚀']).map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, editAvatar === a && { borderColor: themeColor, backgroundColor: isMsg ? C.green2 : C.blue }]} onPress={() => setEditAvatar(a)}>
-                <Text style={styles.avatarOptionText}>{a}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Field label="Nom" value={editName} onChangeText={setEditName} placeholder="Ton nom" />
-          <TouchableOpacity style={[styles.button, { backgroundColor: themeColor, marginTop: 20 }]} onPress={updateProfile}>
-            <Text style={styles.buttonText}>{isLoading ? "Sauvegarde..." : "Enregistrer"}</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      );
-    }
-
-    if (settingsScreen === 'privacy') {
-      return (
-        <ScrollView>
-          <View style={{ padding: 20 }}>
-            <View style={styles.settingRow}>
-              <View><Text style={{ fontSize: 16, color: C.dark }}>Vu(e) récemment</Text><Text style={{ fontSize: 12, color: C.muted }}>Statut en ligne</Text></View>
-              <Switch value={privacyLastSeen} onValueChange={setPrivacyLastSeen} trackColor={{ true: themeColor }} />
-            </View>
-            <View style={styles.settingRow}>
-              <View><Text style={{ fontSize: 16, color: C.dark }}>Confirmations de lecture</Text><Text style={{ fontSize: 12, color: C.muted }}>Doubles coches bleues</Text></View>
-              <Switch value={privacyReadReceipts} onValueChange={setPrivacyReadReceipts} trackColor={{ true: themeColor }} />
-            </View>
-          </View>
-        </ScrollView>
-      );
-    }
-
-    if (settingsScreen === 'notifications') {
-      return (
-        <ScrollView>
-          <View style={{ padding: 20 }}>
-            <View style={styles.settingRow}>
-              <View><Text style={{ fontSize: 16, color: C.dark }}>Messages</Text><Text style={{ fontSize: 12, color: C.muted }}>Recevoir une alerte</Text></View>
-              <Switch value={notifMessages} onValueChange={setNotifMessages} trackColor={{ true: themeColor }} />
-            </View>
-            <View style={styles.settingRow}>
-              <View><Text style={{ fontSize: 16, color: C.dark }}>Réseau Social</Text><Text style={{ fontSize: 12, color: C.muted }}>Likes et commentaires</Text></View>
-              <Switch value={notifSocial} onValueChange={setNotifSocial} trackColor={{ true: themeColor }} />
-            </View>
-          </View>
-        </ScrollView>
-      );
-    }
-
-    if (settingsScreen === 'about') {
-      return (
-        <View style={{ padding: 20, alignItems: 'center', marginTop: 50 }}>
-          <Text style={{ fontSize: 60, marginBottom: 20 }}>T</Text>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>TMD Messenger</Text>
-          <Text style={{ color: C.muted, marginTop: 10, marginBottom: 40 }}>Version 1.0.0 (Bêta)</Text>
-          <Text style={{ textAlign: 'center', color: C.muted, lineHeight: 20 }}>
-            Conçu pour la Guinée, l'Afrique et le monde.{"\n"}
-            Sécurisé, rapide et 100% indépendant.
-          </Text>
-        </View>
-      );
-    }
-    return null;
-  };
-
-  const SettingsModal = () => (
-    <Modal visible={showSettings} animationType="slide">
+    return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.appHeader}>
-          <Text style={[styles.appTitle, { color: screen === 'msg_home' ? C.green : C.blueDark }]}>Paramètres</Text>
-          <TouchableOpacity onPress={() => setShowSettings(false)}><Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text></TouchableOpacity>
-        </View>
-        
-        {settingsScreen !== 'main' && (
-          <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: C.border }} onPress={() => setSettingsScreen('main')}>
-            <Text style={{ fontSize: 24, color: C.dark, marginRight: 10 }}>‹</Text>
-            <Text style={{ fontSize: 16, color: C.dark, fontWeight: 'bold' }}>Retour aux paramètres</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {settingsTab !== 'main' && (
+              <TouchableOpacity onPress={() => setSettingsTab('main')} style={{ paddingRight: 15 }}>
+                <Text style={{ fontSize: 28, color: C.dark, marginTop: -3 }}>‹</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={[styles.appTitle, { color: themeColor }]}>Paramètres</Text>
+          </View>
+          <TouchableOpacity onPress={() => setScreen(returnScreen)}>
+            <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
           </TouchableOpacity>
-        )}
-
-        {renderSettingsContent()}
+        </View>
+        {renderContent()}
       </SafeAreaView>
-    </Modal>
-  );
+    );
+  }
 
   // ==========================================
   // RENDU DES ÉCRANS
@@ -642,7 +626,7 @@ export default function App() {
           )}
         />
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={{ alignItems: 'center' }} onPress={openSettings}>
+          <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => openSettings('msg_home')}>
             <Text style={{ fontSize: 24 }}>⚙️</Text>
             <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
           </TouchableOpacity>
@@ -667,7 +651,6 @@ export default function App() {
             </View>
           </View>
         </Modal>
-        <SettingsModal />
       </SafeAreaView>
     );
   }
@@ -812,7 +795,7 @@ export default function App() {
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune publication.</Text>}
         />
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={{ alignItems: 'center' }} onPress={openSettings}>
+          <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => openSettings('soc_home')}>
             <Text style={{ fontSize: 24 }}>⚙️</Text>
             <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
           </TouchableOpacity>
@@ -833,7 +816,6 @@ export default function App() {
             </View>
           </KeyboardAvoidingView>
         </Modal>
-        <SettingsModal />
       </SafeAreaView>
     );
   }
