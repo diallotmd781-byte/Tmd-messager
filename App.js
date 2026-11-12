@@ -119,9 +119,9 @@ export default function App() {
 
   // --- LOGIN ---
   const [loginPhone, setLoginPhone] = useState('');
-  const [loginPassword, setLoginPassword] = useState(''); // Mot de passe Messagerie
+  const [loginPassword, setLoginPassword] = useState('');
   const [loginContact, setLoginContact] = useState('');
-  const [loginSocPassword, setLoginSocPassword] = useState(''); // Mot de passe Social
+  const [loginSocPassword, setLoginSocPassword] = useState('');
 
   useEffect(() => {
     async function loadSession() {
@@ -392,12 +392,16 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Connexion Messagerie" onBack={() => go('msg_auth_choice')} />
-        <View style={styles.page}>
-          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone} placeholder="620000000" keyboardType="phone-pad" />
-          <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword} isPassword={true} placeholder="Ton mot de passe" />
-          <TouchableOpacity style={styles.button} onPress={loginMessaging}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
-        </View>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+            {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+            <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone} placeholder="620000000" keyboardType="phone-pad" />
+            <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword} isPassword={true} placeholder="Ton mot de passe" />
+            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={loginMessaging}>
+              <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -407,22 +411,27 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Inscription Messagerie" onBack={() => go('msg_auth_choice')} />
-        <ScrollView contentContainerStyle={styles.page}>
-          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Text style={styles.label}>Photo de profil</Text>
-          <View style={styles.avatarRow}>
-            {['👤', '😎', '👩', '🧑', '🦁'].map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}><Text style={styles.avatarOptionText}>{a}</Text></TouchableOpacity>
-            ))}
-          </View>
-          <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
-          <Text style={styles.label}>Pays</Text>
-          <TouchableOpacity style={styles.select} onPress={() => setShowCountries(true)}><Text style={styles.selectText}>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dial})</Text></TouchableOpacity>
-          <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
-          <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
-          <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} isPassword={true} />
-          <TouchableOpacity style={styles.button} onPress={sendMsgOtp}><Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text></TouchableOpacity>
-        </ScrollView>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+            {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+            <Text style={styles.label}>Photo de profil</Text>
+            <View style={styles.avatarRow}>
+              {['👤', '😎', '👩', '🧑', '🦁'].map(a => (
+                <TouchableOpacity key={a} style={[styles.avatarOption, msgAvatar === a && styles.avatarOptionSelected]} onPress={() => setMsgAvatar(a)}><Text style={styles.avatarOptionText}>{a}</Text></TouchableOpacity>
+              ))}
+            </View>
+            <Field label="Nom complet" value={msgName} onChangeText={setMsgName} placeholder="Ton nom" />
+            <Text style={styles.label}>Pays</Text>
+            <TouchableOpacity style={styles.select} onPress={() => setShowCountries(true)}><Text style={styles.selectText}>{selectedCountry.flag} {selectedCountry.name} ({selectedCountry.dial})</Text></TouchableOpacity>
+            <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
+            <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
+            <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} isPassword={true} />
+            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={sendMsgOtp}>
+              <Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        
         <Modal visible={showCountries} transparent animationType="slide">
           <View style={styles.modalOverlay}><View style={styles.modalCard}>
             <FlatList data={COUNTRIES} keyExtractor={(i) => i.name} renderItem={({ item }) => (
@@ -438,10 +447,12 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Code SMS" onBack={() => go('msg_register')} />
-        <View style={styles.page}>
-          <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
-          <TouchableOpacity style={styles.button} onPress={verifyMsgOtp}><Text style={styles.buttonText}>Vérifier</Text></TouchableOpacity>
-        </View>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.page}>
+            <Field label="Code (123456)" value={msgOtp} onChangeText={setMsgOtp} placeholder="123456" keyboardType="number-pad" maxLength={6} />
+            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={verifyMsgOtp}><Text style={styles.buttonText}>Vérifier</Text></TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -551,12 +562,16 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Connexion Sociale" onBack={() => go('soc_auth_choice')} />
-        <View style={styles.page}>
-          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Field label="Email ou Téléphone" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
-          <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
-          <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={loginSocial}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
-        </View>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+            {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+            <Field label="Email ou Téléphone" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
+            <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={loginSocial}>
+              <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -566,20 +581,24 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         <Header title="Inscription Réseau Social" onBack={() => go('soc_auth_choice')} />
-        <ScrollView contentContainerStyle={styles.page}>
-          {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-          <Text style={styles.label}>Avatar public</Text>
-          <View style={styles.avatarRow}>
-            {['🌍', '🦄', '🐯', '🎨', '🎧', '🚀', '🔥'].map(a => (
-              <TouchableOpacity key={a} style={[styles.avatarOption, socAvatar === a && styles.avatarOptionSelected]} onPress={() => setSocAvatar(a)}><Text style={styles.avatarOptionText}>{a}</Text></TouchableOpacity>
-            ))}
-          </View>
-          <Field label="Nom public (Surnom / Pseudo)" value={socName} onChangeText={setSocName} placeholder="Ex: Tmd, AlPacino..." />
-          <Field label="Email ou Téléphone (Privé)" value={socContact} onChangeText={setSocContact} placeholder="contact@email.com" />
-          <Field label="Date de naissance" value={socBirth} onChangeText={v => setSocBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
-          <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} isPassword={true} />
-          <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={registerSocial}><Text style={styles.buttonText}>{isLoading ? "Création..." : "Créer mon compte"}</Text></TouchableOpacity>
-        </ScrollView>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+            {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
+            <Text style={styles.label}>Avatar public</Text>
+            <View style={styles.avatarRow}>
+              {['🌍', '🦄', '🐯', '🎨', '🎧', '🚀', '🔥'].map(a => (
+                <TouchableOpacity key={a} style={[styles.avatarOption, socAvatar === a && styles.avatarOptionSelected]} onPress={() => setSocAvatar(a)}><Text style={styles.avatarOptionText}>{a}</Text></TouchableOpacity>
+              ))}
+            </View>
+            <Field label="Nom public (Surnom / Pseudo)" value={socName} onChangeText={setSocName} placeholder="Ex: Tmd, AlPacino..." />
+            <Field label="Email ou Téléphone (Privé)" value={socContact} onChangeText={setSocContact} placeholder="contact@email.com" />
+            <Field label="Date de naissance" value={socBirth} onChangeText={v => setSocBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
+            <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} isPassword={true} />
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={registerSocial}>
+              <Text style={styles.buttonText}>{isLoading ? "Création..." : "Créer mon compte"}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
