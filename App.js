@@ -417,7 +417,8 @@ export default function App() {
               </View>
               <View style={{ marginLeft: 15 }}>
                 <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{socialAccount.name}</Text>
-                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>Contact privé : {socialAccount.contact}</Text>
+                {/* ICI : ON A SUPPRIMÉ LE NUMÉRO ET ON A MIS "COMPTE PUBLIC" */}
+                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>Compte Public</Text>
               </View>
             </View>
             <View style={{ padding: 10 }}>
@@ -676,7 +677,7 @@ export default function App() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-            <Field label="Email ou Téléphone" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
+            <Field label="Email (ou Identifiant)" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
             <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
             <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 20 }]} onPress={loginSocial}>
               <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
@@ -705,7 +706,8 @@ export default function App() {
               ))}
             </View>
             <Field label="Nom public (Surnom / Pseudo)" value={socName} onChangeText={setSocName} placeholder="Ex: Tmd, AlPacino..." />
-            <Field label="Email ou Téléphone (Privé)" value={socContact} onChangeText={setSocContact} placeholder="contact@email.com" />
+            {/* Modification ici : on demande un Email, pas un téléphone */}
+            <Field label="Email (Privé)" value={socContact} onChangeText={setSocContact} placeholder="contact@email.com" />
             <Field label="Date de naissance" value={socBirth} onChangeText={v => setSocBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
             <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} isPassword={true} />
             <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={registerSocial}>
