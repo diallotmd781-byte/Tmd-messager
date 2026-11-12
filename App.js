@@ -74,7 +74,6 @@ function Header({ title, onBack }) {
   );
 }
 
-// Composant pour les lignes du menu Paramètres
 const SettingItem = ({ icon, title, subtitle, onPress }) => (
   <TouchableOpacity style={styles.settingItem} onPress={onPress}>
     <Text style={{ fontSize: 24, marginRight: 15 }}>{icon}</Text>
@@ -358,37 +357,29 @@ export default function App() {
   }
 
   // ==========================================
-  // NOUVEL ÉCRAN DE PARAMÈTRES COMPLET
+  // PARAMÈTRES MESSAGERIE (Style WhatsApp)
   // ==========================================
-  const SettingsModal = () => {
-    const isMsg = screen === 'msg_home';
-    const currentAcc = isMsg ? account : socialAccount;
-
+  const MsgSettingsModal = () => {
+    if (!account) return null;
     return (
       <Modal visible={showSettings} animationType="slide">
         <SafeAreaView style={styles.safe}>
           <View style={styles.appHeader}>
-            <Text style={styles.appTitle}>Paramètres</Text>
+            <Text style={[styles.appTitle, { color: C.green }]}>Paramètres</Text>
             <TouchableOpacity onPress={() => setShowSettings(false)}>
               <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
             </TouchableOpacity>
           </View>
-
           <ScrollView>
-            {/* BLOC PROFIL */}
             <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
               <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35 }]}>
-                <Text style={{ fontSize: 40 }}>{currentAcc?.avatar || '👤'}</Text>
+                <Text style={{ fontSize: 40 }}>{account.avatar || '👤'}</Text>
               </View>
               <View style={{ marginLeft: 15 }}>
-                <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{currentAcc?.name}</Text>
-                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>
-                  {isMsg ? currentAcc?.phone : currentAcc?.contact}
-                </Text>
+                <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{account.name}</Text>
+                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>{account.phone}</Text>
               </View>
             </View>
-
-            {/* MENU */}
             <View style={{ padding: 10 }}>
               <SettingItem icon="👤" title="Profil" subtitle="Ton nom, ton avatar" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="🔒" title="Confidentialité" subtitle="Bloqués, codes de sécurité" onPress={() => setNotice("Bientôt disponible !")} />
@@ -396,12 +387,47 @@ export default function App() {
               <SettingItem icon="💾" title="Stockage et données" subtitle="Utilisation du réseau" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="ℹ️" title="Aide et support" subtitle="Centre d'aide, contact" onPress={() => setNotice("Bientôt disponible !")} />
             </View>
+            <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={logoutMessaging}>
+              <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
 
-            {/* DÉCONNEXION */}
-            <TouchableOpacity 
-              style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} 
-              onPress={isMsg ? logoutMessaging : logoutSocial}
-            >
+  // ==========================================
+  // PARAMÈTRES SOCIAL (Style Instagram / Twitter)
+  // ==========================================
+  const SocSettingsModal = () => {
+    if (!socialAccount) return null;
+    return (
+      <Modal visible={showSettings} animationType="slide">
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.appHeader}>
+            <Text style={[styles.appTitle, { color: C.blueDark }]}>Paramètres</Text>
+            <TouchableOpacity onPress={() => setShowSettings(false)}>
+              <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35, backgroundColor: C.blue }]}>
+                <Text style={{ fontSize: 40 }}>{socialAccount.avatar || '🌍'}</Text>
+              </View>
+              <View style={{ marginLeft: 15 }}>
+                <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{socialAccount.name}</Text>
+                <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>Contact privé : {socialAccount.contact}</Text>
+              </View>
+            </View>
+            <View style={{ padding: 10 }}>
+              <SettingItem icon="👤" title="Mon compte" subtitle="Modifier mon profil public" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="🔒" title="Confidentialité" subtitle="Qui peut voir mes publications" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="🛡️" title="Sécurité" subtitle="Mot de passe, appareils connectés" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="🔔" title="Notifications" subtitle="Likes, commentaires, messages" onPress={() => setNotice("Bientôt disponible !")} />
+              <SettingItem icon="ℹ️" title="À propos" subtitle="Version de l'application" onPress={() => setNotice("Bientôt disponible !")} />
+            </View>
+            <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={logoutSocial}>
               <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
             </TouchableOpacity>
           </ScrollView>
@@ -593,7 +619,7 @@ export default function App() {
           </View>
         </Modal>
 
-        <SettingsModal />
+        <MsgSettingsModal />
       </SafeAreaView>
     );
   }
@@ -740,7 +766,7 @@ export default function App() {
           </TouchableOpacity>
         </View>
 
-        <SettingsModal />
+        <SocSettingsModal />
       </SafeAreaView>
     );
   }
@@ -876,7 +902,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
-  // Styles pour le menu Paramètres
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
