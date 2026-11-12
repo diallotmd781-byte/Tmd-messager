@@ -125,6 +125,11 @@ export default function App() {
   const [socSearchName, setSocSearchName] = useState('');
   const [showNewSocChatModal, setShowNewSocChatModal] = useState(false);
 
+  // --- NOUVEAU : ÉTATS POUR LES COMMENTAIRES ---
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [commentingPostId, setCommentingPostId] = useState(null);
+  const [newCommentText, setNewCommentText] = useState('');
+
   // --- LOGIN ---
   const [loginPhone, setLoginPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -272,6 +277,7 @@ export default function App() {
     } catch (err) { setChats(prev => prev.map(c => c.phone === recipient ? { ...c, messages: c.messages.map(m => m.id === tempId ? { ...m, status: 'failed' } : m) } : c)); }
   }
 
+  // --- LOGIQUE SOCIAL & COMMENTAIRES ---
   async function loadFeed() {
     try { const res = await fetch(`${API_URL}/social/feed`); setFeed(await res.json()); } catch (err) { console.log(err); }
   }
@@ -311,6 +317,30 @@ export default function App() {
       await fetch(`${API_URL}/social/posts`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ author_contact: socialAccount.contact, text: newPostText }) });
       setNewPostText(''); loadFeed();
     } catch { setNotice('Erreur.'); }
+  }
+
+  // NOUVEAU : Fonction pour aimer un post
+  async function likePost(postId) {
+    // On met à jour l'interface immédiatement (optimistic update)
+    setFeed(prev => prev.map(p => p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p));
+    try {
+      await fetch(`${API_URL}/social/posts/${postId}/like`, { method: 'POST' });
+    } catch (err) { console.log("Erreur like", err); }
+  }
+
+  // NOUVEAU : Fonction pour envoyer un commentaire
+  async function submitComment() {
+    if (!newCommentText.trim() || !commentingPostId) return;
+    try {
+      await fetch(`${API_URL}/social/posts/${commentingPostId}/comment`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ author_contact: socialAccount.contact, text: newCommentText })
+      });
+      setNewCommentText('');
+      setShowCommentModal(false);
+      loadFeed(); // On recharge pour voir le nouveau nombre de commentaires
+      setNotice("Commentaire envoyé !");
+    } catch (err) { setNotice("Erreur commentaire."); }
   }
 
   async function loadSocChats() {
@@ -357,7 +387,7 @@ export default function App() {
   }
 
   // ==========================================
-  // PARAMÈTRES MESSAGERIE (Style WhatsApp)
+  // PARAMÈTRES MESSAGERIE
   // ==========================================
   const MsgSettingsModal = () => {
     if (!account) return null;
@@ -366,15 +396,11 @@ export default function App() {
         <SafeAreaView style={styles.safe}>
           <View style={styles.appHeader}>
             <Text style={[styles.appTitle, { color: C.green }]}>Paramètres</Text>
-            <TouchableOpacity onPress={() => setShowSettings(false)}>
-              <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowSettings(false)}><Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text></TouchableOpacity>
           </View>
           <ScrollView>
             <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35 }]}>
-                <Text style={{ fontSize: 40 }}>{account.avatar || '👤'}</Text>
-              </View>
+              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35 }]}><Text style={{ fontSize: 40 }}>{account.avatar || '👤'}</Text></View>
               <View style={{ marginLeft: 15 }}>
                 <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{account.name}</Text>
                 <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>{account.phone}</Text>
@@ -384,8 +410,6 @@ export default function App() {
               <SettingItem icon="👤" title="Profil" subtitle="Ton nom, ton avatar" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="🔒" title="Confidentialité" subtitle="Bloqués, codes de sécurité" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="🔔" title="Notifications" subtitle="Messages, groupes, sons" onPress={() => setNotice("Bientôt disponible !")} />
-              <SettingItem icon="💾" title="Stockage et données" subtitle="Utilisation du réseau" onPress={() => setNotice("Bientôt disponible !")} />
-              <SettingItem icon="ℹ️" title="Aide et support" subtitle="Centre d'aide, contact" onPress={() => setNotice("Bientôt disponible !")} />
             </View>
             <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={logoutMessaging}>
               <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
@@ -397,7 +421,7 @@ export default function App() {
   };
 
   // ==========================================
-  // PARAMÈTRES SOCIAL (Style Instagram / Twitter)
+  // PARAMÈTRES SOCIAL
   // ==========================================
   const SocSettingsModal = () => {
     if (!socialAccount) return null;
@@ -406,27 +430,20 @@ export default function App() {
         <SafeAreaView style={styles.safe}>
           <View style={styles.appHeader}>
             <Text style={[styles.appTitle, { color: C.blueDark }]}>Paramètres</Text>
-            <TouchableOpacity onPress={() => setShowSettings(false)}>
-              <Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowSettings(false)}><Text style={{ fontSize: 30, color: C.dark, marginTop: -5 }}>×</Text></TouchableOpacity>
           </View>
           <ScrollView>
             <View style={{ flexDirection: 'row', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35, backgroundColor: C.blue }]}>
-                <Text style={{ fontSize: 40 }}>{socialAccount.avatar || '🌍'}</Text>
-              </View>
+              <View style={[styles.chatAvatar, { width: 70, height: 70, borderRadius: 35, backgroundColor: C.blue }]}><Text style={{ fontSize: 40 }}>{socialAccount.avatar || '🌍'}</Text></View>
               <View style={{ marginLeft: 15 }}>
                 <Text style={{ fontSize: 22, fontWeight: 'bold', color: C.dark }}>{socialAccount.name}</Text>
-                {/* ICI : ON A SUPPRIMÉ LE NUMÉRO ET ON A MIS "COMPTE PUBLIC" */}
                 <Text style={{ fontSize: 14, color: C.muted, marginTop: 5 }}>Compte Public</Text>
               </View>
             </View>
             <View style={{ padding: 10 }}>
               <SettingItem icon="👤" title="Mon compte" subtitle="Modifier mon profil public" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="🔒" title="Confidentialité" subtitle="Qui peut voir mes publications" onPress={() => setNotice("Bientôt disponible !")} />
-              <SettingItem icon="🛡️" title="Sécurité" subtitle="Mot de passe, appareils connectés" onPress={() => setNotice("Bientôt disponible !")} />
               <SettingItem icon="🔔" title="Notifications" subtitle="Likes, commentaires, messages" onPress={() => setNotice("Bientôt disponible !")} />
-              <SettingItem icon="ℹ️" title="À propos" subtitle="Version de l'application" onPress={() => setNotice("Bientôt disponible !")} />
             </View>
             <TouchableOpacity style={{ margin: 20, backgroundColor: '#FFF0F0', padding: 15, borderRadius: 10, alignItems: 'center' }} onPress={logoutSocial}>
               <Text style={{ color: C.red, fontSize: 16, fontWeight: 'bold' }}>Se déconnecter 🚪</Text>
@@ -457,29 +474,20 @@ export default function App() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.hero}><View style={styles.logo}><Text style={styles.logoText}>T</Text></View><Text style={styles.brand}>TMD Messenger</Text></View>
         <View style={styles.welcomeCard}>
-          
           <TouchableOpacity style={styles.bigButton} onPress={() => go('msg_home')}>
             <View style={styles.bigButtonIconCircle}><Text style={styles.bigButtonIcon}>💬</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Messagerie</Text>
-              <Text style={styles.bigButtonSubtitle}>{account ? `Connecté: ${account.name}` : "Appuie pour te connecter"}</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Messagerie</Text><Text style={styles.bigButtonSubtitle}>{account ? `Connecté: ${account.name}` : "Appuie pour te connecter"}</Text></View>
           </TouchableOpacity>
-          
           <TouchableOpacity style={[styles.bigButton, { marginTop: 16 }]} onPress={() => go('soc_home')}>
             <View style={[styles.bigButtonIconCircle, { backgroundColor: C.blue }]}><Text style={styles.bigButtonIcon}>🌍</Text></View>
-            <View>
-              <Text style={styles.bigButtonTitle}>Réseau Social</Text>
-              <Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté: ${socialAccount.name}` : "Appuie pour te connecter"}</Text>
-            </View>
+            <View><Text style={styles.bigButtonTitle}>Réseau Social</Text><Text style={styles.bigButtonSubtitle}>{socialAccount ? `Connecté: ${socialAccount.name}` : "Appuie pour te connecter"}</Text></View>
           </TouchableOpacity>
-          
         </View>
       </SafeAreaView>
     );
   }
 
-  // --- CONNEXION MESSAGERIE ---
+  // --- CONNEXION & INSCRIPTION MESSAGERIE ---
   if (screen === 'msg_login') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -489,19 +497,14 @@ export default function App() {
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
             <Field label="Numéro de téléphone" value={loginPhone} onChangeText={setLoginPhone} placeholder="620000000" keyboardType="phone-pad" />
             <Field label="Mot de passe" value={loginPassword} onChangeText={setLoginPassword} isPassword={true} placeholder="Ton mot de passe" />
-            <TouchableOpacity style={[styles.button, { marginBottom: 20 }]} onPress={loginMessaging}>
-              <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2 }]} onPress={() => go('msg_register')}>
-              <Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { marginBottom: 20 }]} onPress={loginMessaging}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.green2 }]} onPress={() => go('msg_register')}><Text style={[styles.buttonText, { color: C.green }]}>Créer un compte</Text></TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  // --- INSCRIPTION MESSAGERIE ---
   if (screen === 'msg_register') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -521,12 +524,9 @@ export default function App() {
             <Field label="Numéro de téléphone" value={msgPhone} onChangeText={setMsgPhone} placeholder="620000000" keyboardType="phone-pad" />
             <Field label="Date de naissance" value={msgBirth} onChangeText={v => setMsgBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
             <Field label="Mot de passe" value={msgPassword} onChangeText={setMsgPassword} isPassword={true} />
-            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={sendMsgOtp}>
-              <Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { marginBottom: 40 }]} onPress={sendMsgOtp}><Text style={styles.buttonText}>{isLoading ? "Chargement..." : "Continuer"}</Text></TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
-        
         <Modal visible={showCountries} transparent animationType="slide">
           <View style={styles.modalOverlay}><View style={styles.modalCard}>
             <FlatList data={COUNTRIES} keyExtractor={(i) => i.name} renderItem={({ item }) => (
@@ -575,19 +575,13 @@ export default function App() {
     return (
       <SafeAreaView style={styles.safe}>
         {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
-        
         <View style={styles.appHeader}>
           <Text style={styles.appTitle}>TMD</Text>
           <View style={{ flexDirection: 'row', gap: 20 }}>
-            <TouchableOpacity onPress={() => go('soc_home')}>
-              <Text style={{ fontSize: 24 }}>🌍</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowNewChatModal(true)}>
-              <Text style={{ fontSize: 24 }}>📝</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => go('soc_home')}><Text style={{ fontSize: 24 }}>🌍</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowNewChatModal(true)}><Text style={{ fontSize: 24 }}>📝</Text></TouchableOpacity>
           </View>
         </View>
-
         <FlatList
           data={chats} keyExtractor={item => item.id} contentContainerStyle={{ padding: 10 }}
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune discussion.</Text>}
@@ -601,25 +595,20 @@ export default function App() {
             </TouchableOpacity>
           )}
         />
-
         <View style={styles.bottomBar}>
           <TouchableOpacity style={{ alignItems: 'center' }} onPress={() => setShowSettings(true)}>
             <Text style={{ fontSize: 24 }}>⚙️</Text>
             <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
           </TouchableOpacity>
         </View>
-
         <Modal visible={showNewChatModal} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
-              <Text style={styles.modalTitle}>Nouveau message</Text>
-              <Field label="Numéro" value={recipientPhone} onChangeText={setRecipientPhone} placeholder="Ex: 611085739" keyboardType="phone-pad" />
-              <TouchableOpacity style={styles.button} onPress={startNewChat}><Text style={styles.buttonText}>Discuter</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 5 }]} onPress={() => setShowNewChatModal(false)}><Text style={{ color: C.muted, fontWeight: 'bold' }}>Annuler</Text></TouchableOpacity>
-            </View>
-          </View>
+          <View style={styles.modalOverlay}><View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
+            <Text style={styles.modalTitle}>Nouveau message</Text>
+            <Field label="Numéro" value={recipientPhone} onChangeText={setRecipientPhone} placeholder="Ex: 611085739" keyboardType="phone-pad" />
+            <TouchableOpacity style={styles.button} onPress={startNewChat}><Text style={styles.buttonText}>Discuter</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 5 }]} onPress={() => setShowNewChatModal(false)}><Text style={{ color: C.muted, fontWeight: 'bold' }}>Annuler</Text></TouchableOpacity>
+          </View></View>
         </Modal>
-
         <MsgSettingsModal />
       </SafeAreaView>
     );
@@ -669,7 +658,7 @@ export default function App() {
     );
   }
 
-  // --- CONNEXION SOCIALE ---
+  // --- CONNEXION & INSCRIPTION SOCIALE ---
   if (screen === 'soc_login') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -679,19 +668,14 @@ export default function App() {
             {notice ? <Text style={styles.errorText}>{notice}</Text> : null}
             <Field label="Email (ou Identifiant)" value={loginContact} onChangeText={setLoginContact} placeholder="contact@email.com" />
             <Field label="Mot de passe" value={loginSocPassword} onChangeText={setLoginSocPassword} isPassword={true} placeholder="Ton mot de passe" />
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 20 }]} onPress={loginSocial}>
-              <Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue }]} onPress={() => go('soc_register')}>
-              <Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 20 }]} onPress={loginSocial}><Text style={styles.buttonText}>{isLoading ? "Connexion..." : "Se connecter"}</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blue }]} onPress={() => go('soc_register')}><Text style={[styles.buttonText, { color: C.blueDark }]}>Créer un compte</Text></TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
 
-  // --- INSCRIPTION SOCIALE ---
   if (screen === 'soc_register') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -706,13 +690,10 @@ export default function App() {
               ))}
             </View>
             <Field label="Nom public (Surnom / Pseudo)" value={socName} onChangeText={setSocName} placeholder="Ex: Tmd, AlPacino..." />
-            {/* Modification ici : on demande un Email, pas un téléphone */}
             <Field label="Email (Privé)" value={socContact} onChangeText={setSocContact} placeholder="contact@email.com" />
             <Field label="Date de naissance" value={socBirth} onChangeText={v => setSocBirth(formatDateInput(v))} placeholder="JJ/MM/AAAA" keyboardType="number-pad" maxLength={10} />
             <Field label="Mot de passe" value={socPassword} onChangeText={setSocPassword} isPassword={true} />
-            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={registerSocial}>
-              <Text style={styles.buttonText}>{isLoading ? "Création..." : "Créer mon compte"}</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark, marginBottom: 40 }]} onPress={registerSocial}><Text style={styles.buttonText}>{isLoading ? "Création..." : "Créer mon compte"}</Text></TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -728,12 +709,8 @@ export default function App() {
         <View style={styles.appHeader}>
           <Text style={[styles.appTitle, { color: C.blueDark }]}>Social</Text>
           <View style={{ flexDirection: 'row', gap: 20 }}>
-            <TouchableOpacity onPress={() => go('msg_home')}>
-              <Text style={{ fontSize: 24 }}>💬</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => go('soc_chat_list')}>
-              <Text style={{ fontSize: 24 }}>✉️</Text>
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => go('msg_home')}><Text style={{ fontSize: 24 }}>💬</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => go('soc_chat_list')}><Text style={{ fontSize: 24 }}>✉️</Text></TouchableOpacity>
           </View>
         </View>
 
@@ -755,7 +732,19 @@ export default function App() {
                 <View><Text style={{ fontWeight: 'bold', fontSize: 16, color: C.dark }}>{item.author_name}</Text><Text style={{ fontSize: 12, color: C.muted }}>{item.created_at}</Text></View>
               </View>
               <Text style={{ fontSize: 16, color: C.dark, lineHeight: 22 }}>{item.text}</Text>
-              <View style={{ flexDirection: 'row', marginTop: 15, gap: 20 }}><Text style={{ color: C.muted }}>❤️ J'aime</Text><Text style={{ color: C.muted }}>💬 Commenter</Text></View>
+              
+              {/* NOUVEAU : Boutons interactifs */}
+              <View style={{ flexDirection: 'row', marginTop: 15, gap: 25 }}>
+                <TouchableOpacity onPress={() => likePost(item.id)} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 18, marginRight: 5 }}>❤️</Text>
+                  <Text style={{ color: C.dark, fontWeight: 'bold' }}>{item.likes || 0}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => { setCommentingPostId(item.id); setShowCommentModal(true); }} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 18, marginRight: 5 }}>💬</Text>
+                  <Text style={{ color: C.muted, fontWeight: 'bold' }}>{item.comments_count || 0}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
           ListEmptyComponent={<Text style={styles.bodyCenter}>Aucune publication.</Text>}
@@ -767,6 +756,30 @@ export default function App() {
             <Text style={{ fontSize: 10, color: C.muted }}>Paramètres</Text>
           </TouchableOpacity>
         </View>
+
+        {/* NOUVEAU : Modale pour commenter */}
+        <Modal visible={showCommentModal} transparent animationType="slide">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <View style={{ backgroundColor: C.white, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 15, color: C.dark }}>Ajouter un commentaire</Text>
+              <TextInput 
+                style={[styles.input, { minHeight: 50, padding: 14, marginBottom: 15 }]} 
+                placeholder="Écris ton commentaire..." 
+                value={newCommentText} 
+                onChangeText={setNewCommentText} 
+                autoFocus
+              />
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: C.blueDark, marginTop: 0 }]} onPress={submitComment}>
+                  <Text style={styles.buttonText}>Envoyer</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.button, { flex: 1, backgroundColor: C.bg, marginTop: 0 }]} onPress={() => setShowCommentModal(false)}>
+                  <Text style={{ color: C.dark, fontWeight: 'bold' }}>Annuler</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         <SocSettingsModal />
       </SafeAreaView>
@@ -796,14 +809,12 @@ export default function App() {
           )}
         />
         <Modal visible={showNewSocChatModal} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
-              <Text style={styles.modalTitle}>Chercher un ami</Text>
-              <Field label="Nom / Surnom" value={socSearchName} onChangeText={setSocSearchName} placeholder="Ex: Tmd" />
-              <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={searchAndStartSocChat}><Text style={styles.buttonText}>{isLoading ? "Recherche..." : "Rechercher"}</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 5 }]} onPress={() => setShowNewSocChatModal(false)}><Text style={{ color: C.muted, fontWeight: 'bold' }}>Annuler</Text></TouchableOpacity>
-            </View>
-          </View>
+          <View style={styles.modalOverlay}><View style={[styles.modalCard, { borderRadius: 20, margin: 20 }]}>
+            <Text style={styles.modalTitle}>Chercher un ami</Text>
+            <Field label="Nom / Surnom" value={socSearchName} onChangeText={setSocSearchName} placeholder="Ex: Tmd" />
+            <TouchableOpacity style={[styles.button, { backgroundColor: C.blueDark }]} onPress={searchAndStartSocChat}><Text style={styles.buttonText}>{isLoading ? "Recherche..." : "Rechercher"}</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.button, { backgroundColor: 'transparent', marginTop: 5 }]} onPress={() => setShowNewSocChatModal(false)}><Text style={{ color: C.muted, fontWeight: 'bold' }}>Annuler</Text></TouchableOpacity>
+          </View></View>
         </Modal>
       </SafeAreaView>
     );
